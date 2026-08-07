@@ -7,10 +7,10 @@ import { StatsPanel } from './StatsPanel'
  * The header is actions, not navigation.
  *
  * It is laid out on a two-row grid of square cells. An action is 1x1
- * (`size-9`); the stats badge is 2x2 — two cells plus the gap between them,
- * which is `size-20` exactly (2 × 2.25rem + 0.5rem = 5rem). Both columns come
+ * (`size-10`); the stats badge is 2x2 — two cells plus the gap between them,
+ * which is `size-22` exactly (2 × 2.5rem + 0.5rem = 5.5rem). Both columns come
  * out the same height, so the header is two rows tall with nothing to align by
- * hand.
+ * hand. Change one and the other has to follow.
  *
  * Actions flow down each column before starting the next, so a growing
  * actions.json fills right to left toward the badge rather than pushing the
@@ -33,7 +33,7 @@ export function Header() {
             type="button"
             onClick={toggle}
             aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-            className="border-line hover:border-accent grid size-9 place-items-center rounded-lg border transition-colors"
+            className="border-line hover:border-accent grid size-10 place-items-center rounded-lg border transition-colors"
           >
             <Icon name={theme === 'dark' ? 'sun' : 'moon'} />
           </button>

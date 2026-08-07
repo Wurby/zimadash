@@ -76,10 +76,10 @@ function HostStatsCard({ host, stats }: { host: string; stats: Stats }) {
 function Readout({ label, percent }: { label: string; percent: number }) {
   return (
     <span className="flex items-baseline justify-between gap-1">
-      <span className="text-ink-dim text-[0.55rem] leading-none font-medium tracking-wide uppercase">
+      <span className="text-ink-dim text-[0.6rem] leading-none font-medium tracking-wide uppercase">
         {label}
       </span>
-      <span className="font-mono text-[0.7rem] leading-none tabular-nums">
+      <span className="font-mono text-[0.8rem] leading-none tabular-nums">
         {Math.round(percent)}%
       </span>
     </span>
@@ -123,7 +123,7 @@ export function StatsPanel() {
         // which is why this is size-20 against the actions' size-9.
         // overflow-hidden so the branding strip clips to the rounded corners.
         // No padding of its own — the strip is the left padding.
-        className="border-line hover:border-accent flex size-20 items-stretch overflow-hidden rounded-xl border text-left transition-colors"
+        className="border-line hover:border-accent flex size-22 items-stretch overflow-hidden rounded-xl border text-left transition-colors"
       >
         {/* Vertical wordmark, reading bottom-to-top like a spine. vertical-rl
             rotates the whole line rather than stacking glyphs, so it takes the
@@ -133,10 +133,10 @@ export function StatsPanel() {
             It gets an explicit centred column rather than self-center alone:
             the vertical line box puts the baseline off to one side, so without
             a column to centre in it sits visibly left of true. */}
-        <span className="flex w-3.5 shrink-0 items-center justify-center bg-slate-200 dark:bg-slate-800">
+        <span className="flex w-4 shrink-0 items-center justify-center bg-slate-200 dark:bg-slate-800">
           <span
             aria-hidden="true"
-            className="rotate-180 text-[0.55rem] leading-none font-medium tracking-[0.12em] text-slate-600 [writing-mode:vertical-rl] dark:text-slate-300"
+            className="rotate-180 text-[0.6rem] leading-none font-medium tracking-[0.12em] text-slate-600 [writing-mode:vertical-rl] dark:text-slate-300"
           >
             zimadash
           </span>
