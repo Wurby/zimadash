@@ -42,8 +42,8 @@ Everything needed before the first real tool can be written.
       routes without `server/src/index.ts` growing a branch per tool
 - [x] Keep tools isolated enough to lift into their own repo later — no tool
       imports another tool
-- [x] `scratch` as the reference implementation — delete the folder and its
-      server half and nothing else notices
+- [x] `scratch` — a permanent tool, and the reference implementation to copy
+      when starting a new one
 
 ### Refresh tiers
 

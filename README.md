@@ -62,7 +62,8 @@ with a distinct icon and start URL.
 If it needs a backend, add `server/src/tools/<slug>.ts` and register it in
 `server/src/tools/registry.ts`; it owns `/api/tools/<slug>` and nothing else.
 
-`src/tools/scratch/` is the reference implementation.
+`src/tools/scratch/` — a shared note — is a permanent tool and the reference
+implementation. Copy it when starting a new one.
 
 ### Refresh tiers
 

@@ -1,4 +1,3 @@
-import { Link } from 'react-router'
 import { useTheme } from '../lib/theme'
 import { Icon } from './Icon'
 import { QuickActions } from './QuickActions'
@@ -7,9 +6,10 @@ import { StatsPanel } from './StatsPanel'
 /**
  * The header is actions, not navigation.
  *
- * Theme toggle, one-tap actions, and the system-stats panel. Getting back to
- * the homepage is the back arrow inside each tool, not a nav bar up here — the
- * wordmark links home as a convenience, nothing more.
+ * The ZD badge on the left is the wordmark and the system-stats control at
+ * once — the monitoring was never the point, so it gets a glance-able readout
+ * and nothing more until you ask for it. Getting back to the homepage is the
+ * back arrow inside each tool, so there is deliberately no nav here.
  */
 export function Header() {
   const { theme, toggle } = useTheme()
@@ -17,16 +17,10 @@ export function Header() {
   return (
     <header className="border-line bg-bg/80 sticky top-0 z-30 border-b backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center gap-3 p-3 sm:px-6">
-        <Link
-          to="/"
-          className="hover:text-accent text-base font-semibold tracking-tight transition-colors"
-        >
-          zimadash
-        </Link>
+        <StatsPanel />
 
         <div className="ml-auto flex items-center gap-2">
           <QuickActions />
-          <StatsPanel />
           <button
             type="button"
             onClick={toggle}

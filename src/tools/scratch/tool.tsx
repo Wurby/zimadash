@@ -5,13 +5,12 @@ import { defineTool } from '../types'
 import meta from './meta.json'
 
 /**
- * Scratch — a single shared note, and the reference implementation of the tool
- * contract.
+ * Scratch — a single shared note. A permanent tool, and the reference
+ * implementation of the tool contract.
  *
  * It exercises every part of the shape on purpose: its own route, its own tile,
  * its own server namespace (/api/tools/scratch), its own file in DATA_DIR, and
- * the `event-driven` tier. Delete this folder and its server half and nothing
- * else in the app notices — which is the property that matters.
+ * the `event-driven` tier. Copy this folder when starting a new tool.
  */
 
 interface Note {

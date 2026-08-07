@@ -4,6 +4,7 @@ import { api } from '../lib/api'
 import { usePolled } from '../lib/refresh'
 import { formatBytes, formatRate, formatTime } from '../lib/format'
 import { Icon } from './Icon'
+import { Logo } from './Logo'
 import { Meter } from './Meter'
 
 /**
@@ -104,14 +105,17 @@ export function StatsPanel() {
         type="button"
         onClick={() => setOpen((prev) => !prev)}
         aria-expanded={open}
-        aria-label="System stats"
-        className="border-line hover:border-accent flex items-center gap-2 rounded-lg border px-2.5 py-1.5 transition-colors"
+        aria-label="zimadash — system stats"
+        className="border-line hover:border-accent flex items-center gap-2 rounded-lg border py-1 pr-2 pl-1.5 transition-colors"
       >
-        <Icon
-          name="activity"
-          className={state.status === 'error' ? 'text-danger' : 'text-accent'}
-        />
-        <span className="font-mono text-xs tabular-nums">{summary}</span>
+        <Logo />
+        <span
+          className={`font-mono text-xs tabular-nums ${
+            state.status === 'error' ? 'text-danger' : ''
+          }`}
+        >
+          {summary}
+        </span>
         <Icon
           name="chevron"
           className={`text-ink-dim transition-transform ${open ? 'rotate-180' : ''}`}
@@ -119,7 +123,10 @@ export function StatsPanel() {
       </button>
 
       {open && (
-        <div className="border-line bg-surface absolute right-0 z-20 mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-2xl border p-5 shadow-lg">
+        // Anchored left so it opens down-and-right from the badge, and capped
+        // in both axes against the viewport — the full panel is taller than a
+        // phone in landscape, so it scrolls rather than running off-screen.
+        <div className="border-line bg-surface absolute left-0 z-20 mt-2 max-h-[calc(100dvh-5rem)] w-[min(24rem,calc(100vw-1.5rem))] overflow-y-auto overscroll-contain rounded-2xl border p-5 shadow-lg">
           {state.status === 'loading' && <p className="text-ink-dim text-sm">loading…</p>}
 
           {state.status === 'error' && (
