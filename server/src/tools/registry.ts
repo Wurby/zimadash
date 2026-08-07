@@ -1,4 +1,5 @@
 import type { Router } from 'express';
+import calories from './calories/index.js';
 import scratch from './scratch.js';
 
 /**
@@ -16,4 +17,4 @@ export interface ServerTool {
  * place that changes. `index.ts` mounts the whole array in a loop and never
  * grows a branch per tool.
  */
-export const serverTools: ServerTool[] = [scratch];
+export const serverTools: ServerTool[] = [calories, scratch];

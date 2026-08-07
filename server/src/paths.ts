@@ -38,9 +38,22 @@ export function readJson<T>(name: string): T | null {
 export function writeJson(name: string, value: unknown): void {
   ensureDataDir();
   const target = dataFile(name);
+  // `name` may be nested — a tool with a lot of files wants its own folder, and
+  // ensureDataDir only makes DATA_DIR itself.
+  fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 });
+
   const tmp = `${target}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(value, null, 2), { mode: 0o600 });
   fs.renameSync(tmp, target);
+}
+
+/** Names of the files directly inside a DATA_DIR subdirectory. */
+export function listDataFiles(dir: string): string[] {
+  try {
+    return fs.readdirSync(dataFile(dir));
+  } catch {
+    return [];
+  }
 }
 
 /**

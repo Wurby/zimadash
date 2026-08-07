@@ -1,0 +1,9 @@
+{
+  "slug": "calories",
+  "name": "Calories",
+  "shortName": "Calories",
+  "description": "What you ate, and what it cost",
+  "themeColor": "#0284c7",
+  "backgroundColor": "#f8fafc",
+  "glyph": "◔"
+}

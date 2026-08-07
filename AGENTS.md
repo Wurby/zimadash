@@ -145,6 +145,11 @@ for a token, or a slate/sky shade if you genuinely need one the tokens don't
 cover. Hex colors in the PWA manifests and `index.html` are those same shades
 written out, because neither format can take a CSS variable.
 
+**A tool's own data colors are exempt.** A chart series or a per-macro bar has to
+be told apart at a glance, and that needs hue. Those colors belong to the tool —
+picked by the user where it makes sense — and don't come out of the tokens. The
+chrome around them still does.
+
 Anything that should read as **lifted off the page** — a homepage tile, the
 stats badge, an action button — is `bg-surface` with a `border-line` border on
 the `bg-bg` page. That one relationship is what makes them a family.
