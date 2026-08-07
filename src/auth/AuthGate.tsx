@@ -1,9 +1,41 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { api, getToken, setToken, SESSION_EXPIRED_EVENT } from '../lib/api'
+import { api, ApiError, getToken, setToken, SESSION_EXPIRED_EVENT } from '../lib/api'
 
-type Phase = 'checking' | 'setup' | 'login' | 'authed'
+type Phase = 'checking' | 'unreachable' | 'setup' | 'login' | 'authed'
 
 const MIN_PIN_LENGTH = 4
+
+const SETUP = '/api/auth/setup'
+const LOGIN = '/api/auth/login'
+
+/**
+ * Exchange a PIN for a token.
+ *
+ * Both endpoints answer 409 when the client has the wrong idea about whether a
+ * PIN exists yet — setup says "already set", login says "none set". The server
+ * is the authority, so follow it and use the other endpoint rather than
+ * dead-ending on an error the person typing cannot act on. First use sets the
+ * PIN no matter which screen they happened to land on.
+ */
+async function authenticate(isSetup: boolean, pin: string): Promise<string> {
+  const body = JSON.stringify({ pin })
+
+  try {
+    const { token } = await api<{ token: string }>(isSetup ? SETUP : LOGIN, {
+      method: 'POST',
+      body,
+    })
+    return token
+  } catch (err) {
+    if (!(err instanceof ApiError) || err.status !== 409) throw err
+
+    const { token } = await api<{ token: string }>(isSetup ? LOGIN : SETUP, {
+      method: 'POST',
+      body,
+    })
+    return token
+  }
+}
 
 export function AuthGate({ children }: { children: ReactNode }) {
   // A token already in storage is taken at face value; the first rejected API
@@ -24,9 +56,10 @@ export function AuthGate({ children }: { children: ReactNode }) {
         if (!cancelled) setPhase(configured ? 'login' : 'setup')
       })
       .catch(() => {
-        if (cancelled) return
-        setError('cannot reach the dashboard server')
-        setPhase('login')
+        // Unreachable is not the same as "a PIN already exists". Guessing that
+        // it does is what strands a first-ever visit behind a login form it can
+        // never satisfy, so say what actually happened and offer a retry.
+        if (!cancelled) setPhase('unreachable')
       })
 
     return () => {
@@ -38,7 +71,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
     function onExpired() {
       setPin('')
       setError('your session ended — enter your PIN')
-      setPhase('login')
+      // Back to 'checking', not straight to 'login' — the server is the
+      // authority on which screen this should be.
+      setPhase('checking')
     }
     window.addEventListener(SESSION_EXPIRED_EVENT, onExpired)
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired)
@@ -55,12 +90,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
     setBusy(true)
     try {
-      const endpoint = phase === 'setup' ? '/api/auth/setup' : '/api/auth/login'
-      const { token } = await api<{ token: string }>(endpoint, {
-        method: 'POST',
-        body: JSON.stringify({ pin }),
-      })
-      setToken(token)
+      setToken(await authenticate(phase === 'setup', pin))
       setPin('')
       setPhase('authed')
     } catch (err) {
@@ -76,6 +106,27 @@ export function AuthGate({ children }: { children: ReactNode }) {
     return (
       <div className="grid min-h-dvh place-items-center">
         <p className="text-ink-dim text-sm">loading…</p>
+      </div>
+    )
+  }
+
+  if (phase === 'unreachable') {
+    return (
+      <div className="grid min-h-dvh place-items-center p-6">
+        <div className="border-line bg-surface w-full max-w-sm rounded-2xl border p-6 text-center shadow-sm sm:p-8">
+          <h1 className="text-xl font-semibold tracking-tight">zimadash</h1>
+          <p className="text-ink-dim mt-2 text-sm">Can't reach the dashboard server.</p>
+          <button
+            type="button"
+            onClick={() => {
+              setError(null)
+              setPhase('checking')
+            }}
+            className="bg-accent mt-6 w-full rounded-lg px-4 py-2.5 font-medium text-white transition-opacity hover:opacity-90"
+          >
+            Try again
+          </button>
+        </div>
       </div>
     )
   }
