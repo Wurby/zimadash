@@ -4,7 +4,6 @@ import { api } from '../lib/api'
 import { usePolled } from '../lib/refresh'
 import { formatBytes, formatRate, formatTime } from '../lib/format'
 import { Icon } from './Icon'
-import { Logo } from './Logo'
 import { Meter } from './Meter'
 
 /**
@@ -76,7 +75,7 @@ function HostStatsCard({ host, stats }: { host: string; stats: Stats }) {
  */
 function Readout({ label, percent }: { label: string; percent: number }) {
   return (
-    <span className="flex items-baseline justify-between gap-1.5">
+    <span className="flex items-baseline justify-between gap-1">
       <span className="text-ink-dim text-[0.6rem] leading-none font-medium tracking-wide uppercase">
         {label}
       </span>
@@ -122,34 +121,44 @@ export function StatsPanel() {
         aria-expanded={open}
         // 2x2 on the header grid: two action cells plus the gap between them,
         // which is why this is size-20 against the actions' size-9.
-        className="border-line hover:border-accent flex size-20 flex-col justify-between rounded-xl border p-2 text-left transition-colors"
+        className="border-line hover:border-accent flex size-20 items-stretch gap-1 rounded-xl border p-1.5 text-left transition-colors"
       >
-        <span className="flex items-start justify-between">
-          <Logo className="size-5" />
-          <Icon
-            name="chevron"
-            className={`text-ink-dim transition-transform ${open ? 'rotate-180' : ''}`}
-          />
+        {/* Vertical wordmark down the left edge, reading bottom-to-top like a
+            spine. vertical-rl rotates the whole line rather than stacking
+            glyphs, so this takes up the string's normal width (~50px) along
+            the badge's height, and only its line-box (~10px) of width. */}
+        <span
+          aria-hidden="true"
+          className="text-ink-dim self-center rotate-180 text-[0.6rem] leading-none font-medium tracking-[0.15em] [writing-mode:vertical-rl]"
+        >
+          zimadash
         </span>
 
         {/* Not an aria-label on the button — that would replace the readout for
             screen readers instead of introducing it. */}
         <span className="sr-only">zimadash system stats,</span>
 
-        {first ? (
-          <span className="flex flex-col gap-1">
-            <Readout label="cpu" percent={first.cpu.usagePercent ?? 0} />
-            <Readout label="ram" percent={first.mem.usagePercent} />
-          </span>
-        ) : (
-          <span
-            className={`font-mono text-[0.7rem] leading-none tabular-nums ${
-              state.status === 'error' ? 'text-danger' : 'text-ink-dim'
-            }`}
-          >
-            {state.status === 'error' ? 'offline' : '···'}
-          </span>
-        )}
+        <span className="flex min-w-0 flex-1 flex-col justify-between">
+          {first ? (
+            <span className="flex flex-col gap-1">
+              <Readout label="cpu" percent={first.cpu.usagePercent ?? 0} />
+              <Readout label="ram" percent={first.mem.usagePercent} />
+            </span>
+          ) : (
+            <span
+              className={`font-mono text-[0.7rem] leading-none tabular-nums ${
+                state.status === 'error' ? 'text-danger' : 'text-ink-dim'
+              }`}
+            >
+              {state.status === 'error' ? 'offline' : '···'}
+            </span>
+          )}
+
+          <Icon
+            name="chevron"
+            className={`text-ink-dim self-end transition-transform ${open ? 'rotate-180' : ''}`}
+          />
+        </span>
       </button>
 
       {open && (
