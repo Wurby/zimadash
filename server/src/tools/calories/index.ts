@@ -3,7 +3,7 @@ import type { ServerTool } from '../registry.js';
 import type { DaySummary, Entry, Settings } from '../../shared/calories.js';
 import { RANGE_DAYS, type RangeKey } from '../../shared/calories.js';
 import { readSettings, writeSettings, trackedFields } from './settings.js';
-import { refineEstimate, startEstimate, takeThread } from './brain.js';
+import { refineEstimate, startEstimate, startImageEstimate, takeThread } from './brain.js';
 import {
   addEntry,
   dayKeyFor,
@@ -119,6 +119,32 @@ router.post('/estimate', async (req, res) => {
 
   try {
     res.json(await startEstimate(description));
+  } catch (err) {
+    res.status(503).json({ error: err instanceof Error ? err.message : 'estimate failed' });
+  }
+});
+
+/**
+ * Estimate from a photograph. The body is base64 rather than multipart so this
+ * needs no upload dependency; the client downscales first, so a few hundred KB
+ * arrives rather than a phone's full 5MB.
+ */
+router.post('/estimate/image', async (req, res) => {
+  const raw = typeof req.body?.image === 'string' ? req.body.image : '';
+  // Accept a bare base64 string or a whole data: URL.
+  const base64 = raw.includes(',') ? raw.slice(raw.indexOf(',') + 1) : raw;
+
+  if (!base64) {
+    res.status(400).json({ error: 'no photo received' });
+    return;
+  }
+  if (base64.length > 12_000_000) {
+    res.status(413).json({ error: 'that photo is too large' });
+    return;
+  }
+
+  try {
+    res.json(await startImageEstimate(base64));
   } catch (err) {
     res.status(503).json({ error: err instanceof Error ? err.message : 'estimate failed' });
   }

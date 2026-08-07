@@ -47,6 +47,12 @@ export const startEstimate = (description: string) =>
     body: JSON.stringify({ description }),
   })
 
+export const estimateFromPhoto = (image: string) =>
+  api<PendingEstimate>(`${BASE}/estimate/image`, {
+    method: 'POST',
+    body: JSON.stringify({ image }),
+  })
+
 export const refineEstimate = (id: string, feedback: string) =>
   api<PendingEstimate>(`${BASE}/estimate/${id}/refine`, {
     method: 'POST',

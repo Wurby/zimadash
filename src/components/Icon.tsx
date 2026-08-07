@@ -25,6 +25,12 @@ const paths: Record<string, ReactNode> = {
     </>
   ),
   chevron: <path d="M6 9l6 6 6-6" />,
+  camera: (
+    <>
+      <path d="M3 8.5h3.5L8 6.5h8l1.5 2H21v11H3z" />
+      <circle cx="12" cy="13.5" r="3.5" />
+    </>
+  ),
   grid: (
     <>
       <rect x="3" y="3" width="7" height="7" rx="1.5" />

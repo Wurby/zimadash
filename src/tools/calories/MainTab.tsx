@@ -1,8 +1,11 @@
 import { useRef, useState } from 'react'
 import type { FieldConfig, PendingEstimate, Settings } from '@shared/calories'
+import { Icon } from '../../components/Icon'
 import { usePolled } from '../../lib/refresh'
+import { shrink } from './photo'
 import {
   commitEstimate,
+  estimateFromPhoto,
   getDay,
   getRange,
   getRecent,
@@ -169,8 +172,10 @@ export function MainTab({ settings }: { settings: Settings | null }) {
   const [text, setText] = useState('')
   const [pending, setPending] = useState<PendingEstimate | null>(null)
   const [busy, setBusy] = useState(false)
+  const [stage, setStage] = useState<'text' | 'photo'>('text')
   const [error, setError] = useState<string | null>(null)
   const input = useRef<HTMLInputElement>(null)
+  const photoInput = useRef<HTMLInputElement>(null)
 
   function refreshAll() {
     day.refresh()
@@ -199,6 +204,23 @@ export function MainTab({ settings }: { settings: Settings | null }) {
     } finally {
       setBusy(false)
       input.current?.focus()
+    }
+  }
+
+  async function fromPhoto(file: File) {
+    if (busy) return
+    setError(null)
+    setBusy(true)
+    setStage('photo')
+    try {
+      // Shrink on the device: a phone's full-resolution photo is slow to send
+      // and expensive to look at, for no gain in judging a plate of food.
+      setPending(await estimateFromPhoto(await shrink(file)))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'could not read that photo')
+    } finally {
+      setBusy(false)
+      setStage('text')
     }
   }
 
@@ -249,19 +271,48 @@ export function MainTab({ settings }: { settings: Settings | null }) {
       <CaloriesBar totals={totals} fields={fields} />
 
       <form onSubmit={submit}>
-        <input
-          ref={input}
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          disabled={busy || pending !== null}
-          autoFocus
-          enterKeyHint="done"
-          placeholder="A number, or what you ate…"
-          className="border-line bg-surface focus:border-accent w-full border px-4 py-3.5 text-base outline-none disabled:opacity-50"
-        />
+        <div className="relative">
+          <input
+            ref={input}
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            disabled={busy || pending !== null}
+            autoFocus
+            enterKeyHint="done"
+            placeholder="A number, or what you ate…"
+            className="border-line bg-surface focus:border-accent w-full border py-3.5 pr-14 pl-4 text-base outline-none disabled:opacity-50"
+          />
+
+          {/* `capture` opens the camera straight away on a phone rather than the
+              photo library, which is the whole point of the button. */}
+          <input
+            ref={photoInput}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            hidden
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              event.target.value = ''
+              if (file) void fromPhoto(file)
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => photoInput.current?.click()}
+            disabled={busy || pending !== null}
+            aria-label="Photograph the meal instead"
+            className="text-ink-dim hover:text-accent absolute inset-y-0 right-0 grid w-14 place-items-center disabled:opacity-50"
+          >
+            <Icon name="camera" className="!h-6 !w-6" />
+          </button>
+        </div>
+
         {busy && !pending && (
           <p className="text-ink-dim mt-2 animate-pulse font-mono text-xs">
-            estimating — this takes a few seconds…
+            {stage === 'photo'
+              ? 'looking at the photo — this takes a moment…'
+              : 'estimating — this takes a few seconds…'}
           </p>
         )}
       </form>

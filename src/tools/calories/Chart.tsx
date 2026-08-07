@@ -80,6 +80,13 @@ export function Chart({
 
   const active = hover !== null ? points[hover] : null
 
+  function locate(event: React.PointerEvent<SVGSVGElement>) {
+    const box = event.currentTarget.getBoundingClientRect()
+    const ratio = (event.clientX - box.left) / box.width
+    const i = Math.round(((ratio * W - PAD.left) / plotW) * (points.length - 1))
+    setHover(Math.min(points.length - 1, Math.max(0, i)))
+  }
+
   return (
     <div>
       <div className="flex items-baseline justify-between gap-3">
@@ -100,13 +107,20 @@ export function Chart({
         className="mt-2 w-full touch-pan-y"
         role="img"
         aria-label={`${label} per day`}
+        // pointermove alone means a touch has to be held and dragged before
+        // anything appears, because a tap never produces one. pointerdown makes
+        // a single tap — or a single click — land the crosshair straight away.
+        onPointerDown={locate}
+        // Then follow the finger or the mouse: buttons > 0 catches a touch drag,
+        // where a plain hover doesn't exist.
         onPointerMove={(event) => {
-          const box = event.currentTarget.getBoundingClientRect()
-          const ratio = (event.clientX - box.left) / box.width
-          const i = Math.round(((ratio * W - PAD.left) / plotW) * (points.length - 1))
-          setHover(Math.min(points.length - 1, Math.max(0, i)))
+          if (event.pointerType === 'mouse' || event.buttons > 0) locate(event)
         }}
-        onPointerLeave={() => setHover(null)}
+        // Only a mouse "leaves". Clearing on touch would wipe the crosshair the
+        // instant you lifted your finger, which is exactly when you want to read it.
+        onPointerLeave={(event) => {
+          if (event.pointerType === 'mouse') setHover(null)
+        }}
       >
         {/* Recessive frame: a baseline and a top rule, nothing more. */}
         <line

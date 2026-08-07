@@ -17,6 +17,12 @@ ensureDataDir();
 initSessionSecret();
 
 const app = express();
+
+// A photographed meal is bigger than any other body this server takes, so it
+// gets its own parser mounted ahead of the global one. Raising the global limit
+// instead would hand every endpoint the same allowance, which is a needless
+// amount of memory to let a stranger allocate.
+app.use('/api/tools/calories/estimate/image', express.json({ limit: '12mb' }));
 app.use(express.json({ limit: '1mb' }));
 
 // ─── Public routes ───────────────────────────────────────────────────────────

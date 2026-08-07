@@ -40,12 +40,17 @@ function resolveClaude(): string | null {
   return null;
 }
 
-function run(prompt: string): Promise<string> {
+function run(prompt: string, withImage = false): Promise<string> {
   const bin = resolveClaude();
   if (!bin) throw new Error('the estimator is not available on this server');
 
+  // Text estimates run with no tools at all. Reading a photograph is the only
+  // thing that needs one, so Read is granted only for that call and nothing
+  // else is ever allowed — this process handles input from the open internet.
+  const args = withImage ? ['-p', prompt, '--allowed-tools', 'Read'] : ['-p', prompt];
+
   return new Promise((resolve, reject) => {
-    execFile(bin, ['-p', prompt], { timeout: TIMEOUT_MS, maxBuffer: MAX_OUTPUT }, (err, stdout) => {
+    execFile(bin, args, { timeout: TIMEOUT_MS, maxBuffer: MAX_OUTPUT }, (err, stdout) => {
       if (err) {
         reject(new Error('the estimator did not respond'));
         return;
@@ -61,21 +66,30 @@ function describeFields(fields: FieldConfig[]): string {
     .join('\n');
 }
 
-function buildPrompt(fields: FieldConfig[], transcript: string[]): string {
+function buildPrompt(fields: FieldConfig[], transcript: string[], imagePath?: string): string {
   const now = new Date();
   const clock = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const day = now.toLocaleDateString([], { weekday: 'long' });
 
-  return `You estimate the nutritional content of a meal from a short description.
+  const image = imagePath
+    ? `Read the image at ${imagePath}. It is a photograph of the meal. Judge the
+portion from what is on the plate and from anything in shot that gives scale —
+cutlery, a hand, the size of the plate itself.
+
+`
+    : '';
+
+  return `You estimate the nutritional content of a meal.
 
 It is ${clock} on a ${day}, which should inform whether this reads as breakfast,
 lunch, dinner, or a snack, and therefore what a typical portion looks like.
 
-${transcript.join('\n\n')}
+${image}${transcript.join('\n\n')}
 
 Reply with a single JSON object and nothing else — no prose, no code fence:
 
 {
+  "name": "<three or four words naming the meal>",
   "values": {
 ${fields.map((f) => `    "${f.id}": <number>`).join(',\n')}
   },
@@ -91,6 +105,7 @@ ${describeFields(fields)}`;
 }
 
 interface Parsed {
+  name: string;
   values: Record<string, number>;
   assumptions: string;
 }
@@ -113,6 +128,7 @@ function parse(reply: string, fields: FieldConfig[]): Parsed {
   }
 
   return {
+    name: typeof body.name === 'string' ? body.name.trim().slice(0, 80) : '',
     values,
     assumptions: typeof body.assumptions === 'string' ? body.assumptions.trim() : '',
   };
@@ -130,18 +146,19 @@ function serialise<T>(work: () => Promise<T>): Promise<T> {
   return next;
 }
 
-async function estimate(transcript: string[]): Promise<Parsed> {
+async function estimate(transcript: string[], imagePath?: string): Promise<Parsed> {
   const fields = trackedFields();
-  const prompt = buildPrompt(fields, transcript);
+  const prompt = buildPrompt(fields, transcript, imagePath);
+  const withImage = imagePath !== undefined;
 
   return serialise(async () => {
     try {
-      return parse(await run(prompt), fields);
+      return parse(await run(prompt, withImage), fields);
     } catch (first) {
       // One retry, because a malformed reply is usually a one-off. Twice in a
       // row is a real problem and shouldn't cost another 90 seconds.
       if (first instanceof Error && first.message === 'the estimator did not respond') throw first;
-      return parse(await run(prompt), fields);
+      return parse(await run(prompt, withImage), fields);
     }
   });
 }
@@ -158,10 +175,7 @@ interface Thread extends PendingEstimate {
 const threads = new Map<string, Thread>();
 const MAX_THREADS = 20;
 
-export async function startEstimate(description: string): Promise<PendingEstimate> {
-  const transcript = [`Meal: ${description}`];
-  const { values, assumptions } = await estimate(transcript);
-
+function remember(description: string, transcript: string[], parsed: Parsed): PendingEstimate {
   if (threads.size >= MAX_THREADS) {
     const oldest = threads.keys().next().value;
     if (oldest !== undefined) threads.delete(oldest);
@@ -170,14 +184,43 @@ export async function startEstimate(description: string): Promise<PendingEstimat
   const thread: Thread = {
     id: crypto.randomBytes(8).toString('hex'),
     description,
-    values,
-    assumptions,
+    values: parsed.values,
+    assumptions: parsed.assumptions,
     rounds: 0,
-    transcript: [...transcript, `You estimated: ${JSON.stringify({ values, assumptions })}`],
+    // The estimate goes into the transcript so a later correction has the
+    // numbers to work from — which is also what lets a photo be refined by text
+    // after its file is gone.
+    transcript: [...transcript, `You estimated: ${JSON.stringify(parsed)}`],
   };
   threads.set(thread.id, thread);
 
   return toPending(thread);
+}
+
+export async function startEstimate(description: string): Promise<PendingEstimate> {
+  const transcript = [`Meal: ${description}`];
+  return remember(description, transcript, await estimate(transcript));
+}
+
+/**
+ * Estimate from a photograph.
+ *
+ * The image is written to the OS temp directory, read once, and deleted in a
+ * finally — it never touches DATA_DIR and never outlives the call. What
+ * survives is the model's own name for the meal and its numbers, which is
+ * enough for the refinement rounds to work on afterwards without the picture.
+ */
+export async function startImageEstimate(base64: string): Promise<PendingEstimate> {
+  const file = path.join(os.tmpdir(), `zimadash-meal-${crypto.randomBytes(8).toString('hex')}.jpg`);
+  fs.writeFileSync(file, Buffer.from(base64, 'base64'), { mode: 0o600 });
+
+  try {
+    const parsed = await estimate(['Meal: the photograph.'], file);
+    const description = parsed.name || 'photographed meal';
+    return remember(description, [`Meal: ${description}, from a photograph.`], parsed);
+  } finally {
+    fs.rmSync(file, { force: true });
+  }
 }
 
 export async function refineEstimate(
