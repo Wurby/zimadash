@@ -136,9 +136,9 @@ export function StatsPanel() {
         <span className="flex w-4 shrink-0 items-center justify-center bg-slate-200 dark:bg-slate-800">
           <span
             aria-hidden="true"
-            className="rotate-180 text-[0.75rem] leading-none font-medium tracking-[0.18em] text-slate-600 [writing-mode:vertical-rl] dark:text-slate-300"
+            className="rotate-180 text-[0.75rem] leading-none font-medium tracking-[0.18em] font-bold text-slate-600 [writing-mode:vertical-rl] dark:text-slate-300"
           >
-            zimadash
+            Zimadash
           </span>
         </span>
 

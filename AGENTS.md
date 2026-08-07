@@ -109,6 +109,19 @@ a deliberate design choice and is not to be described in any tracked file.
 - React 19 + TypeScript + Vite, Tailwind v4 (`@theme inline` tokens in
   `src/index.css`, class-based dark mode seeded by an inline script in
   `index.html` so the wall display never flashes)
+
+**Slate and sky only.** Every token in `src/index.css` is a stock Tailwind
+slate or sky, named in a comment beside its value. Don't introduce another hue,
+a bespoke palette, or a bare `text-white` — reach for a token, or a slate/sky
+shade if you genuinely need one the tokens don't cover. Hex colors in the PWA
+manifests and `index.html` are the same shades written out, because those
+formats can't take a CSS variable.
+
+Adjacent surfaces are judged by perceptual lightness delta, not WCAG ratio; text
+pairs are judged by ratio and must clear 4.5:1 in **both** themes. `sky-600`
+fails that on a light surface at 3.84:1, which is why the light accent is
+`sky-700`.
+
 - Express + `systeminformation` in `server/`, its own `package.json`
 - One process serves both the API and the built frontend from `dist/`. No proxy.
 

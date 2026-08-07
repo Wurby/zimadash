@@ -18,29 +18,34 @@
   --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', monospace;
 }
 
+/* Every token is a stock Tailwind slate or sky. Values are inlined rather than
+   referenced as var(--color-slate-*) because Tailwind only emits theme
+   variables it sees used in a utility, and a var() inside :root is invisible to
+   that scan. The shade is named beside each so the two can't drift.
+
+   Adjacent surfaces are tuned by perceptual lightness delta, not WCAG ratio:
+   the ratio formula's flare term compresses differences at the dark end, which
+   is why the light border here scores ~1.3:1 and still reads perfectly well.
+   Light holds ~11 L between a tile border and its surface; dark needs at least
+   that much, and comfortably more, to separate as clearly. */
 :root {
-  --bg: oklch(98.4% 0.003 250);
-  --surface: oklch(100% 0 0);
-  --line: oklch(90% 0.006 250);
-  --ink: oklch(23% 0.015 250);
-  --ink-dim: oklch(52% 0.014 250);
-  --accent: oklch(58% 0.16 250);
-  --danger: oklch(56% 0.19 25);
+  --bg: oklch(96.8% 0.007 247.896); /* slate-100 */
+  --surface: oklch(98.4% 0.003 247.858); /* slate-50  */
+  --line: oklch(86.9% 0.022 252.894); /* slate-300 — 11.5 L off surface */
+  --ink: oklch(20.8% 0.042 265.755); /* slate-900 */
+  --ink-dim: oklch(55.4% 0.046 257.417); /* slate-500 */
+  --accent: oklch(50% 0.134 242.749); /* sky-700 — sky-600 was 3.84:1, under 4.5 */
+  --danger: oklch(29.3% 0.066 243.157); /* sky-950   */
 }
 
-/* Adjacent surfaces are tuned by perceptual lightness delta, not by WCAG ratio:
-   the ratio formula's flare term compresses differences at the dark end, which
-   is why the light border below scores 1.35:1 and still reads perfectly well.
-   Light mode holds ~10 L between a tile border and its surface — dark needs at
-   least that much, and comfortably more, to separate as clearly. */
 .dark {
-  --bg: oklch(15% 0.012 250); /* 8 L below surface — tiles lift off the page */
-  --surface: oklch(23% 0.014 250);
-  --line: oklch(36% 0.018 250); /* 13 L above surface — the border does the work */
-  --ink: oklch(95% 0.004 250);
-  --ink-dim: oklch(72% 0.012 250);
-  --accent: oklch(72% 0.14 250);
-  --danger: oklch(70% 0.16 25);
+  --bg: oklch(12.9% 0.042 264.695); /* slate-950 — 7.9 L below surface */
+  --surface: oklch(20.8% 0.042 265.755); /* slate-900 */
+  --line: oklch(37.2% 0.044 257.287); /* slate-700 — 16.4 L off surface */
+  --ink: oklch(96.8% 0.007 247.896); /* slate-100 */
+  --ink-dim: oklch(70.4% 0.04 256.788); /* slate-400 */
+  --accent: oklch(74.6% 0.16 232.661); /* sky-400   */
+  --danger: oklch(90.1% 0.058 230.902); /* sky-200   */
 }
 
 html {

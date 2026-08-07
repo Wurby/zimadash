@@ -122,7 +122,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
               setError(null)
               setPhase('checking')
             }}
-            className="bg-accent mt-6 w-full rounded-lg px-4 py-2.5 font-medium text-white transition-opacity hover:opacity-90"
+            className="bg-accent mt-6 w-full rounded-lg px-4 py-2.5 font-medium text-slate-50 transition-opacity dark:text-slate-900 hover:opacity-90"
           >
             Try again
           </button>
@@ -175,7 +175,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
         <button
           type="submit"
           disabled={busy}
-          className="bg-accent mt-6 w-full rounded-lg px-4 py-2.5 font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+          className="bg-accent mt-6 w-full rounded-lg px-4 py-2.5 font-medium text-slate-50 transition-opacity dark:text-slate-900 hover:opacity-90 disabled:opacity-50"
         >
           {busy ? 'working…' : isSetup ? 'Set PIN' : 'Unlock'}
         </button>

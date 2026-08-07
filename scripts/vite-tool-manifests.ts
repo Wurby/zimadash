@@ -32,8 +32,8 @@ const DASH: ToolMeta = {
   name: 'zimadash',
   shortName: 'zimadash',
   description: 'A personal dashboard',
-  themeColor: '#1b1d21',
-  backgroundColor: '#ffffff',
+  themeColor: '#0f172b',
+  backgroundColor: '#f8fafc',
   glyph: '◆',
 }
 
@@ -66,7 +66,7 @@ function iconSvg(meta: ToolMeta): string {
   <rect width="512" height="512" rx="96" fill="${escapeXml(meta.themeColor)}"/>
   <text x="50%" y="50%" dy="0.35em" text-anchor="middle"
         font-family="ui-sans-serif, system-ui, -apple-system, sans-serif"
-        font-size="256" fill="#ffffff">${escapeXml(meta.glyph)}</text>
+        font-size="256" fill="#f8fafc">${escapeXml(meta.glyph)}</text>
 </svg>
 `
 }

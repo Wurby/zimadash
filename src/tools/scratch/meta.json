@@ -3,7 +3,7 @@
   "name": "Scratch",
   "shortName": "Scratch",
   "description": "A single shared note",
-  "themeColor": "#3b6ef5",
-  "backgroundColor": "#ffffff",
+  "themeColor": "#0069a8",
+  "backgroundColor": "#f8fafc",
   "glyph": "✎"
 }
