@@ -16,11 +16,17 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
+    /* Cross-boundary modules. They live under the server's rootDir so the
+       server still compiles cleanly; Vite resolves this alias for the client. */
+    "paths": {
+      "@shared/*": ["./server/src/shared/*"]
+    },
+
     /* Linting */
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["src", "server/src/shared"]
 }

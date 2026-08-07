@@ -10,10 +10,10 @@ one-off tools and utilities he builds for himself. A calorie counter, a habit
 tracker, whatever comes next. Tools that will never exist anywhere else in the
 shape he wants them.
 
-It is **not** a homelab monitoring dashboard. The system-stats view that
-currently fills the page was an MVP placeholder, and it is on its way to
-becoming a single expandable panel in the header. Do not treat it as the
-project's purpose, and do not extend it as though monitoring were the goal.
+It is **not** a homelab monitoring dashboard. The system-stats view was an MVP
+placeholder and now lives as a single expandable panel in the header, which is
+all the room it gets. Do not treat it as the project's purpose, and do not
+extend it as though monitoring were the goal.
 
 Off-the-shelf dashboards (Homepage, Homarr, Dashy) were evaluated and rejected:
 overkill for the job, and not extensible enough for bespoke tools.
@@ -42,6 +42,11 @@ that fire real side effects (Homebridge scenes, robovac), and the system-stats
 panel. A tapped action swaps its icon for a checkmark for 5 seconds. Navigation
 back to the homepage is a back arrow inside each tool.
 
+Quick actions are configured in `actions.json` in `DATA_DIR`, never in this
+repo — the request usually carries a credential. The browser is told an
+action's id, label, and icon and nothing else; `server/src/actions.ts` makes the
+call. An action marked `"confirm": true` needs a second tap before it fires.
+
 **Each tool is its own installable PWA** — distinct icon, distinct start URL —
 so a single tool can live on the phone home screen on its own.
 
@@ -59,6 +64,12 @@ actually changes:
 Polling **pauses when the tab is hidden**. A server-side cache must never be
 slower than the client tier it feeds, or the client re-fetches values that
 cannot have changed.
+
+These intervals live in `server/src/shared/tiers.ts` and are read by both sides,
+so they cannot drift apart. Use `usePolled(tier, fetcher)` from
+`src/lib/refresh.ts` rather than a `setInterval` in a component — there is one
+timer per tier for the whole app, so tiles tick together instead of shimmering
+out of step on the wall display.
 
 ## Persistence — read this before writing any file
 
@@ -105,17 +116,49 @@ a deliberate design choice and is not to be described in any tracked file.
 
 ```text
 src/
-  lib/api.ts        every API call — attaches the token, handles 401 in one place
-  auth/AuthGate.tsx PIN setup + unlock, wraps the app
+  App.tsx             route table: / , /:slug/* , 404
+  lib/api.ts          every API call — attaches the token, handles 401 in one place
+  lib/refresh.ts      tier scheduler + usePolled — ONE timer per tier, app-wide
+  lib/theme.ts        light/dark, class-driven on <html>
+  lib/pwa.ts          swaps the manifest <link> per route
+  auth/AuthGate.tsx   PIN unlock, wraps the app
+  components/         Header, StatsPanel, QuickActions, Icon, Meter
+  routes/             Home (tile grid), ToolShell (back arrow), NotFound
+  tools/types.ts      the tool contract
+  tools/registry.ts   import.meta.glob auto-registration
+  tools/<slug>/       meta.json + tool.tsx — one folder per tool
 server/src/
-  index.ts          routes, auth gate, static serving
-  auth.ts           PIN hashing, session tokens, lockout
-  paths.ts          DATA_DIR — persistent state, outside the artifact
-  cache.ts          stats polling loop
-deploy/             service.template — systemd user unit, rendered at deploy time
-scripts/deploy.sh   build locally, rsync artifact to the server
-deploy.local.env    real deploy target — GITIGNORED, never commit
+  index.ts            routes, auth gate, static serving, tool mounting
+  auth.ts             the PIN gate
+  paths.ts            DATA_DIR — persistent state, outside the artifact
+  cache.ts            stats polling loop
+  actions.ts          quick-action proxy — credentials never reach the browser
+  shared/             types.ts + tiers.ts — imported by BOTH sides
+  tools/registry.ts   the one list of server-side tools
+  tools/<slug>.ts     a tool's /api/tools/<slug> routes
+scripts/
+  deploy.sh           build locally, rsync artifact to the server
+  vite-tool-manifests.ts  emits a PWA manifest + icon per tool at build time
+deploy/               service.template — systemd user unit, rendered at deploy time
+deploy.local.env      real deploy target — GITIGNORED, never commit
 ```
+
+### Adding a tool
+
+Create `src/tools/<slug>/` with a `meta.json` and a `tool.tsx` that
+default-exports `defineTool({ meta, tier, Tile, View })`. That is the whole
+registration — it gets a route, a homepage tile, and its own PWA manifest with
+no central list to edit. The slug must equal the folder name or the registry
+throws at startup.
+
+If it needs server routes, add `server/src/tools/<slug>.ts` exporting
+`{ slug, router }` and put it in `server/src/tools/registry.ts`. It owns
+everything under `/api/tools/<slug>` and nothing outside it.
+
+**Cross-boundary code goes in `server/src/shared/`** — it sits inside the
+server's `rootDir` so `tsc -p server` still emits a flat `dist/`, and the
+frontend reaches it through the `@shared/*` alias. Keep it free of Node
+built-ins and browser globals.
 
 ## Commands
 
@@ -159,7 +202,7 @@ Full deploy, SSH, and troubleshooting detail lives in [README.md](README.md).
   kill them.
 - **Never drive the browser unprompted.** Playwright (and any other browser
   automation) is only for when Joshua has explicitly approved it. He prefers to
-  do the testing himself and be told *when* and *how* to test. Ask about testing
+  do the testing himself and be told _when_ and _how_ to test. Ask about testing
   only once all building is finished, as the final step.
 - **Commit after every approval.** When Joshua approves a change, commit it
   before moving on. The remote is `git@github.com:Wurby/zimadash.git`.

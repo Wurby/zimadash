@@ -8,9 +8,9 @@ React 19 + TypeScript + Vite on the front, Express on the back. It runs on a
 small home server and is designed for two screens at once: a phone, and a
 wall-mounted tablet read from across the room.
 
-The system-stats view currently on the homepage is placeholder. This is not a
-homelab monitoring dashboard, and the monitoring is on its way to becoming a
-single panel in the header rather than the point of the thing.
+This is not a homelab monitoring dashboard. System stats were the MVP
+placeholder and now sit in a collapsed header panel rather than being the point
+of the thing. The homepage is a grid of tools.
 
 ---
 
@@ -20,18 +20,24 @@ single panel in the header rather than the point of the thing.
 zimadash/
 ├── src/                  React frontend (Vite)
 │   ├── auth/             PIN gate, wraps the app
-│   └── lib/api.ts        every API call goes through here
+│   ├── components/       header, stats panel, quick actions
+│   ├── routes/           home grid, tool shell, 404
+│   ├── tools/<slug>/     one folder per tool — meta.json + tool.tsx
+│   └── lib/              api, refresh scheduler, theme, pwa
 ├── server/
 │   └── src/
 │       ├── index.ts      Express app: /api routes + serves the built frontend
 │       ├── auth.ts       the PIN gate
 │       ├── paths.ts      persistent state, kept outside the build artifact
+│       ├── actions.ts    quick-action proxy
 │       ├── cache.ts      stats polling loop
-│       └── zimaStats.ts  CPU / memory / disk / network
+│       ├── shared/       types + refresh tiers, imported by BOTH sides
+│       └── tools/        each tool's /api/tools/<slug> routes
 ├── deploy/
 │   └── service.template  systemd user unit template
 └── scripts/
-    └── deploy.sh         build locally, ship the artifact to the server
+    ├── deploy.sh         build locally, ship the artifact to the server
+    └── vite-tool-manifests.ts  a PWA manifest + icon per tool
 ```
 
 One process does double duty: it exposes the API **and** serves the built
@@ -40,6 +46,23 @@ of it and no proxy.
 
 The dashboard is behind a PIN. Everything under `/api` requires it except the
 health endpoint, which has to stay open so the deploy can verify itself.
+
+### Tools
+
+Tools are the unit of work. Each is self-contained — its own route, its own tile
+on the homepage, its own data — and must stay liftable into its own repo, so no
+tool imports another.
+
+Adding one means creating `src/tools/<slug>/` with a `meta.json` and a
+`tool.tsx` that default-exports `defineTool({ meta, tier, Tile, View })`. The
+registry picks it up by convention: there is no central list to edit. It gets a
+URL at `/<slug>`, a tile on the homepage, and its own installable PWA manifest
+with a distinct icon and start URL.
+
+If it needs a backend, add `server/src/tools/<slug>.ts` and register it in
+`server/src/tools/registry.ts`; it owns `/api/tools/<slug>` and nothing else.
+
+`src/tools/scratch/` is the reference implementation.
 
 ### Refresh tiers
 
@@ -52,7 +75,38 @@ actually changes.
 | `ambient`      | 60s+    | Weather, calendar — a minute stale is fine     |
 | `event-driven` | never   | Self-entered data; refetch after you mutate it |
 
-Polling pauses when the tab is hidden.
+Polling pauses when the tab is hidden. The intervals live in
+`server/src/shared/tiers.ts` and are read by both the client and the server
+cache, so the two can't drift apart. On the client there is one timer per tier
+for the whole app rather than a timer per component — use
+`usePolled(tier, fetcher)` from `src/lib/refresh.ts`.
+
+### Quick actions
+
+The header can fire real side effects in one tap. Actions are configured in
+`actions.json` in the data directory, never in this repo, because the request
+usually carries a credential — the browser is told only an id, label, and icon,
+and the server makes the call. Mark an action `"confirm": true` and it needs a
+second tap before it fires.
+
+```json
+{
+  "actions": [
+    {
+      "id": "goodnight",
+      "label": "Goodnight",
+      "icon": "moon",
+      "confirm": false,
+      "request": {
+        "method": "POST",
+        "url": "http://<host>/api/scene",
+        "headers": { "Authorization": "Bearer <token>" },
+        "body": { "scene": "goodnight" }
+      }
+    }
+  ]
+}
+```
 
 ---
 
@@ -151,14 +205,14 @@ than leaving a half-deployed box. Preview without changing anything:
 npm run deploy:dry
 ```
 
-| Flag                | Effect                                                        |
-| ------------------- | ------------------------------------------------------------- |
-| `--dry-run`         | Build and stage, show the rsync diff, change nothing remotely |
-| `--skip-build`      | Ship the existing `dist/` and `server/dist/` as-is            |
+| Flag                | Effect                                                         |
+| ------------------- | -------------------------------------------------------------- |
+| `--dry-run`         | Build and stage, show the rsync diff, change nothing remotely  |
+| `--skip-build`      | Ship the existing `dist/` and `server/dist/` as-is             |
 | `--clean`           | Wipe `node_modules` and all build output, then build from zero |
-| `--install-service` | Also render and install the systemd unit                      |
-| `--no-verify`       | Skip the post-deploy health check                             |
-| `--host <ssh-host>` | Deploy to a different SSH host                                |
+| `--install-service` | Also render and install the systemd unit                       |
+| `--no-verify`       | Skip the post-deploy health check                              |
+| `--host <ssh-host>` | Deploy to a different SSH host                                 |
 
 Flags go after `--`, e.g. `npm run deploy -- --clean --install-service`.
 

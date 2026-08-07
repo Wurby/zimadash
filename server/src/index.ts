@@ -3,6 +3,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startPolling, getCachedStats, getAllHostIds } from './cache.js';
 import { handleLogin, handleSetup, handleStatus, initSessionSecret, requireAuth } from './auth.js';
+import { handleFireAction, handleListActions } from './actions.js';
+import { serverTools } from './tools/registry.js';
 import { DATA_DIR, ensureDataDir } from './paths.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -50,6 +52,16 @@ app.get('/api/stats/:host', (req, res) => {
   }
   res.json(entry.data);
 });
+
+// Header quick actions. Configured in DATA_DIR, fired server-side.
+app.get('/api/actions', handleListActions);
+app.post('/api/actions/:id/fire', handleFireAction);
+
+// Each tool owns everything under its own namespace. Adding a tool means adding
+// it to tools/registry.ts — this loop never changes.
+for (const tool of serverTools) {
+  app.use(`/api/tools/${tool.slug}`, tool.router);
+}
 
 // ─── Frontend ────────────────────────────────────────────────────────────────
 // The app shell is public; it renders the PIN screen and gets no data without a

@@ -1,10 +1,12 @@
 import { getZimaStats } from './zimaStats.js';
 import type { Stats } from './types.js';
+import { intervalFor, type RefreshTier } from './shared/tiers.js';
 
-// "Live" tier: system stats genuinely move second to second, so the server
-// cache refreshes at the same cadence the client polls. See todos.md for the
-// per-tool refresh tiers this will grow into.
-const POLL_INTERVAL_MS = 5_000;
+// System stats genuinely move second to second, so they sit on the `live` tier.
+// The interval comes from shared/tiers.ts — the same module the client reads —
+// so the cache can never end up slower than the clients polling it.
+const TIER: RefreshTier = 'live';
+const POLL_INTERVAL_MS = intervalFor(TIER) ?? 5_000;
 
 interface CacheEntry {
   data: Stats | null;

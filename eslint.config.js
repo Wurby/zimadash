@@ -27,6 +27,15 @@ export default tseslint.config(
     },
   },
 
+  // A tool's entry point default-exports a ToolDefinition, not a component —
+  // that is the registry contract, so the fast-refresh rule can't apply here.
+  {
+    files: ['src/tools/*/tool.tsx'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
+
   // Server
   {
     files: ['server/src/**/*.ts'],

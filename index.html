@@ -5,6 +5,15 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#1b1d21" />
+
+    <!-- Default manifest. src/lib/pwa.ts swaps this per route, so installing
+         from inside a tool installs that tool as its own app. -->
+    <link rel="manifest" href="/pwa/dash.webmanifest" />
+    <link rel="apple-touch-icon" href="/pwa/dash-icon.svg" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="zimadash" />
+
     <title>zimadash</title>
     <script>
       // Applied before first paint so the wall display never flashes the wrong theme.

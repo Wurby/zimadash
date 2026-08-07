@@ -23,61 +23,68 @@ Status: `[ ]` not started · `[~]` in progress · `[x]` done
 
 ## Phase 1 — the shell
 
-Everything needed before the first real tool can be written. Roughly in order.
+Everything needed before the first real tool can be written.
 
 ### Routing
 
-- [ ] Add a router; every tool gets its own URL (`/calories`, `/habits`)
-- [ ] Homepage at `/` is the tile grid
-- [ ] Back arrow inside each tool returns to `/` — the header is not navigation
-- [ ] 404 route for an unknown tool slug
+- [x] Add a router; every tool gets its own URL (`/calories`, `/habits`)
+- [x] Homepage at `/` is the tile grid
+- [x] Back arrow inside each tool returns to `/` — the header is not navigation
+- [x] 404 route for an unknown tool slug
 
 ### Tool registry
 
-- [ ] Define the tool contract: slug, display name, icon, tile component, view
+- [x] Define the tool contract: slug, display name, icon, tile component, view
       component, refresh tier
-- [ ] Convention-driven registration — drop a folder in `src/tools/<slug>/` and
+- [x] Convention-driven registration — drop a folder in `src/tools/<slug>/` and
       it appears on the homepage without editing a central list
-- [ ] Server-side counterpart: a tool can register its own `/api/tools/<slug>`
+- [x] Server-side counterpart: a tool can register its own `/api/tools/<slug>`
       routes without `server/src/index.ts` growing a branch per tool
-- [ ] Keep tools isolated enough to lift into their own repo later — no tool
+- [x] Keep tools isolated enough to lift into their own repo later — no tool
       imports another tool
+- [x] `scratch` as the reference implementation — delete the folder and its
+      server half and nothing else notices
 
 ### Refresh tiers
 
-- [ ] Implement `live` / `ambient` / `event-driven` as a shared hook
-- [ ] One scheduler for all tiles rather than a timer per component
-- [ ] Server cache TTL derives from the tier, so the two can't drift apart again
+- [x] Implement `live` / `ambient` / `event-driven` as a shared hook
+- [x] One scheduler for all tiles rather than a timer per component
+- [x] Server cache TTL derives from the tier, so the two can't drift apart again
 - [ ] Later: swap polling for server-sent events, mainly for the wall display
 
 ### Header
 
-- [ ] Header component: light/dark toggle writing to `zimadash.theme`
-- [ ] System stats become an expandable header panel — tap to expand, tap away
+- [x] Header component: light/dark toggle writing to `zimadash.theme`
+- [x] System stats become an expandable header panel — tap to expand, tap away
       to collapse. No `/system` route; delete the stats view from the homepage
-- [ ] Quick-action contract: icon, label, endpoint
-- [ ] Tapped action swaps its icon for a checkmark for 5 seconds
-- [ ] Server-side action proxy — credentials live in `DATA_DIR`/env on zima, the
-      browser never holds a secret
-- [ ] Decide whether destructive actions need a confirm (robovac by pocket-tap)
+- [x] Quick-action contract: icon, label, endpoint
+- [x] Tapped action swaps its icon for a checkmark for 5 seconds
+- [x] Server-side action proxy — credentials live in `DATA_DIR`, the browser
+      never holds a secret
+- [x] Destructive actions need a second tap, not a modal — `"confirm": true` in
+      `actions.json`
+- [ ] Write a real `actions.json` (Homebridge scenes, robovac) — the plumbing is
+      done, but no action is configured yet
 
 ### PWA
 
-- [ ] Web app manifest per tool — distinct icon and `start_url` so a single tool
+- [x] Web app manifest per tool — distinct icon and `start_url` so a single tool
       installs to the phone home screen on its own
-- [ ] Icon set and theme colors for light and dark
+- [x] Generated icon per tool from its `meta.json` color and glyph
+- [ ] Real icon art. The generated SVGs are placeholders, and iOS wants a PNG
+      `apple-touch-icon` — the current SVG one may not take
 - [ ] Verify install works from iOS Safari, which is fussy about this
 
 ### Homepage
 
-- [ ] Tile grid that reads well on a phone and scales to a wall display
-- [ ] Tiles render live data at rest — a tile is informative before you tap it
-- [ ] Empty and error states for a tile whose data won't load
+- [x] Tile grid that reads well on a phone and scales to a wall display
+- [x] Tiles render live data at rest — a tile is informative before you tap it
+- [x] Empty and error states for a tile whose data won't load
 
 ### Housekeeping
 
-- [ ] Share types between client and server — `Stats` is currently declared twice
-      ([src/App.tsx](src/App.tsx) and [server/src/types.ts](server/src/types.ts))
+- [x] Share types between client and server — one declaration in
+      `server/src/shared/`, reached from the frontend via `@shared/*`
 - [x] Rewrite README around the real project, not the stats dashboard
 - [ ] Rename the systemd unit and remote dir to `zimadash` (set in
       `deploy.local.env`, then `npm run deploy -- --install-service`)

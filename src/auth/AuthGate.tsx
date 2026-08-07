@@ -89,9 +89,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
         className="border-line bg-surface w-full max-w-sm rounded-2xl border p-6 shadow-sm sm:p-8"
       >
         <h1 className="text-xl font-semibold tracking-tight">zimadash</h1>
-        <p className="text-ink-dim mt-1 text-sm">
-          {isSetup ? 'Choose a PIN.' : 'Enter your PIN.'}
-        </p>
+        <p className="text-ink-dim mt-1 text-sm">{isSetup ? 'Choose a PIN.' : 'Enter your PIN.'}</p>
 
         {/* There is only ever one user, but password managers and screen
             readers expect a username field alongside a password field. */}

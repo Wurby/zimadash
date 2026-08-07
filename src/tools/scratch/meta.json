@@ -1,0 +1,9 @@
+{
+  "slug": "scratch",
+  "name": "Scratch",
+  "shortName": "Scratch",
+  "description": "A single shared note",
+  "themeColor": "#3b6ef5",
+  "backgroundColor": "#ffffff",
+  "glyph": "✎"
+}
