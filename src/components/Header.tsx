@@ -23,7 +23,10 @@ export function Header() {
   const { theme, toggle } = useTheme()
 
   return (
-    <header className="border-line bg-bg/80 sticky top-0 z-30 border-b backdrop-blur">
+    // The top safe-area inset lives here rather than on the body so the
+    // blurred background still runs under the status bar while the badge and
+    // actions sit clear of it. Zero on anything without a notch.
+    <header className="border-line bg-bg/80 sticky top-0 z-30 border-b pt-[env(safe-area-inset-top)] backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-start gap-3 p-3 sm:px-6">
         <StatsPanel />
 
