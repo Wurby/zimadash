@@ -67,6 +67,22 @@ function HostStatsCard({ host, stats }: { host: string; stats: Stats }) {
   )
 }
 
+/**
+ * One figure in the collapsed badge. The label carries its own weight — a bare
+ * "12% · 34%" tells you nothing about which number is which, and this is meant
+ * to be read at a glance from across the room.
+ */
+function Readout({ label, percent }: { label: string; percent: number }) {
+  return (
+    <span className="inline-flex items-baseline gap-1">
+      <span className="text-ink-dim text-[0.65rem] font-medium tracking-wide uppercase">
+        {label}
+      </span>
+      <span className="font-mono text-xs tabular-nums">{Math.round(percent)}%</span>
+    </span>
+  )
+}
+
 export function StatsPanel() {
   const [open, setOpen] = useState(false)
   const wrapper = useRef<HTMLDivElement>(null)
@@ -93,11 +109,6 @@ export function StatsPanel() {
   }, [open])
 
   const first = state.status === 'ok' ? state.data[0]?.[1] : null
-  const summary = first
-    ? `${Math.round(first.cpu.usagePercent ?? 0)}% · ${Math.round(first.mem.usagePercent)}%`
-    : state.status === 'error'
-      ? '—'
-      : '···'
 
   return (
     <div ref={wrapper} className="relative">
@@ -105,17 +116,29 @@ export function StatsPanel() {
         type="button"
         onClick={() => setOpen((prev) => !prev)}
         aria-expanded={open}
-        aria-label="zimadash — system stats"
         className="border-line hover:border-accent flex items-center gap-2 rounded-lg border py-1 pr-2 pl-1.5 transition-colors"
       >
         <Logo />
-        <span
-          className={`font-mono text-xs tabular-nums ${
-            state.status === 'error' ? 'text-danger' : ''
-          }`}
-        >
-          {summary}
-        </span>
+
+        {/* Not an aria-label on the button — that would replace the readout for
+            screen readers instead of introducing it. */}
+        <span className="sr-only">zimadash system stats,</span>
+
+        {first ? (
+          <span className="flex items-baseline gap-2.5">
+            <Readout label="cpu" percent={first.cpu.usagePercent ?? 0} />
+            <Readout label="ram" percent={first.mem.usagePercent} />
+          </span>
+        ) : (
+          <span
+            className={`font-mono text-xs tabular-nums ${
+              state.status === 'error' ? 'text-danger' : ''
+            }`}
+          >
+            {state.status === 'error' ? 'unavailable' : '···'}
+          </span>
+        )}
+
         <Icon
           name="chevron"
           className={`text-ink-dim transition-transform ${open ? 'rotate-180' : ''}`}
