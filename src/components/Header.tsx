@@ -23,10 +23,14 @@ export function Header() {
   const { theme, toggle } = useTheme()
 
   return (
-    // The top safe-area inset lives here rather than on the body so the
-    // blurred background still runs under the status bar while the badge and
-    // actions sit clear of it. Zero on anything without a notch.
-    <header className="border-line bg-bg/80 sticky top-0 z-30 border-b pt-[env(safe-area-inset-top)] backdrop-blur">
+    // The top safe-area inset lives here rather than on the body so the blurred
+    // background still runs under the status bar while the badge and actions
+    // sit clear of it.
+    //
+    // Installed on a phone it also takes a floor, because iOS will happily draw
+    // under the status bar while reporting an inset of 0. max() means a device
+    // that does report one still wins.
+    <header className="border-line bg-bg/80 sticky top-0 z-30 border-b pt-[env(safe-area-inset-top)] backdrop-blur installed-phone:pt-[max(env(safe-area-inset-top),3.25rem)]">
       <div className="mx-auto flex max-w-6xl items-start gap-3 p-3 sm:px-6">
         <StatsPanel />
 

@@ -5,6 +5,16 @@
    OS preference. */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Installed on a phone.
+ *
+ * iOS draws the web view under the status bar but does not always report a
+ * top safe-area inset for it — env(safe-area-inset-top) can come back 0 while
+ * the notch is still sitting on your header. This variant marks the case where
+ * that bites so a floor can be applied, without touching a browser tab (the
+ * chrome already protects the top) or the wall tablet, which is wider than any
+ * phone and has nothing to clear. */
+@custom-variant installed-phone (@media (display-mode: standalone) and (max-width: 480px));
+
 @theme inline {
   --color-bg: var(--bg);
   --color-surface: var(--surface);
