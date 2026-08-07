@@ -1,0 +1,28 @@
+# systemd *user* unit template for zimadash.
+#
+# This is the source of truth. scripts/deploy.sh renders it with the values from
+# deploy.local.env and installs the result — don't hand-edit the copy on the box.
+#
+#   npm run deploy -- --install-service
+#
+# Placeholders: @REMOTE_DIR@  @NODE_BIN@  @PORT@
+#
+# A user unit needs lingering enabled for the account it runs as, so it starts
+# without an interactive login and the deploy can drive systemctl over SSH:
+#
+#   sudo loginctl enable-linger <user>
+
+[Unit]
+Description=zimadash (HTTP)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/@REMOTE_DIR@/server
+Environment=PORT=@PORT@
+ExecStart=@NODE_BIN@ %h/@REMOTE_DIR@/server/dist/index.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

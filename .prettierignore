@@ -1,0 +1,7 @@
+dist
+server/dist
+node_modules
+server/node_modules
+.deploy
+package-lock.json
+server/package-lock.json

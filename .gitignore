@@ -1,0 +1,43 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+server/node_modules
+server/dist
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# local deploy staging
+.deploy/
+
+# real deployment target — hosts, paths, interpreter. Never commit this.
+deploy.local.env
+
+# rendered systemd unit (built from the template at deploy time)
+deploy/*.service
+
+# local persistent data (mirrors ~/zimadash-data on zima)
+.data/
+.env
+.env.local
+
+# playwright mcp scratch output
+.playwright-mcp/
