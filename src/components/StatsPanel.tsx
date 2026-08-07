@@ -76,10 +76,10 @@ function HostStatsCard({ host, stats }: { host: string; stats: Stats }) {
 function Readout({ label, percent }: { label: string; percent: number }) {
   return (
     <span className="flex items-baseline justify-between gap-1">
-      <span className="text-ink-dim text-[0.6rem] leading-none font-medium tracking-wide uppercase">
+      <span className="text-ink-dim text-[0.5rem] leading-none font-medium tracking-wide uppercase">
         {label}
       </span>
-      <span className="font-mono text-[0.7rem] leading-none tabular-nums">
+      <span className="font-mono text-[0.65rem] leading-none tabular-nums">
         {Math.round(percent)}%
       </span>
     </span>
@@ -121,17 +121,23 @@ export function StatsPanel() {
         aria-expanded={open}
         // 2x2 on the header grid: two action cells plus the gap between them,
         // which is why this is size-20 against the actions' size-9.
-        className="border-line hover:border-accent flex size-20 items-stretch gap-1 rounded-xl border p-1.5 text-left transition-colors"
+        className="border-line hover:border-accent flex size-20 items-stretch gap-2 rounded-xl border p-1 text-left transition-colors"
       >
         {/* Vertical wordmark down the left edge, reading bottom-to-top like a
             spine. vertical-rl rotates the whole line rather than stacking
-            glyphs, so this takes up the string's normal width (~50px) along
-            the badge's height, and only its line-box (~10px) of width. */}
-        <span
-          aria-hidden="true"
-          className="text-ink-dim self-center rotate-180 text-[0.6rem] leading-none font-medium tracking-[0.15em] [writing-mode:vertical-rl]"
-        >
-          zimadash
+            glyphs, so this takes the string's normal width (~50px) along the
+            badge's height and only its line box of width.
+
+            It gets an explicit centred column rather than self-center alone:
+            the vertical line box puts the baseline off to one side, so without
+            a column to centre in it sits visibly left of true. */}
+        <span className="flex w-4 shrink-0 items-center justify-center">
+          <span
+            aria-hidden="true"
+            className="text-ink-dim rotate-180 text-[0.6rem] leading-none font-medium tracking-[0.15em] [writing-mode:vertical-rl]"
+          >
+            zimadash
+          </span>
         </span>
 
         {/* Not an aria-label on the button — that would replace the readout for
