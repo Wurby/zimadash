@@ -117,22 +117,28 @@ npm install
 npm --prefix server install
 ```
 
-Run the backend and the Vite dev server in two terminals:
-
-```bash
-npm --prefix server run dev
-```
+Then one command for everything:
 
 ```bash
 npm run dev
 ```
 
-Vite serves on `:5173` and proxies `/api` to the backend on `:3107` (see
-`vite.config.ts`). Stats will reflect **your own machine** — the server reads
-whatever it happens to be running on.
+That starts the API on `:3107` and Vite on `:5173`, and ctrl-c stops both. Vite
+proxies `/api` to the backend (see `vite.config.ts`), so running Vite alone
+makes every API call return **502 Bad Gateway** — which reads like an auth bug
+rather than a missing process. Hence the single command.
+
+Stats will reflect **your own machine** — the server reads whatever it happens
+to be running on.
+
+Run them separately with `npm run dev:server` and `npm run dev:web` if you want
+them in their own terminals.
 
 | Command                | Does                                         |
 | ---------------------- | -------------------------------------------- |
+| `npm run dev`          | API + Vite together; ctrl-c stops both       |
+| `npm run dev:server`   | Just the API, in watch mode                  |
+| `npm run dev:web`      | Just Vite                                    |
 | `npm run build`        | Type-check and build the frontend to `dist/` |
 | `npm run build:server` | Compile the server to `server/dist/`         |
 | `npm run build:all`    | Both                                         |

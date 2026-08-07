@@ -137,6 +137,7 @@ server/src/
   tools/registry.ts   the one list of server-side tools
   tools/<slug>.ts     a tool's /api/tools/<slug> routes
 scripts/
+  dev.mjs             starts the API and Vite together — what `npm run dev` runs
   deploy.sh           build locally, rsync artifact to the server
   vite-tool-manifests.ts  emits a PWA manifest + icon per tool at build time
 deploy/               service.template — systemd user unit, rendered at deploy time
@@ -162,15 +163,16 @@ built-ins and browser globals.
 
 ## Commands
 
-| Command                       | Does                                              |
-| ----------------------------- | ------------------------------------------------- |
-| `npm run dev`                 | Vite dev server on :5173, proxies `/api` to :3107 |
-| `npm --prefix server run dev` | Backend in watch mode                             |
-| `npm run build:all`           | Type-check + build frontend and server            |
-| `npm run lint`                | ESLint                                            |
-| `npm run format`              | Prettier                                          |
-| `npm run deploy`              | Full build + ship to the server (see README)      |
-| `npm run deploy:dry`          | Stage and show the rsync diff, change nothing     |
+| Command              | Does                                               |
+| -------------------- | -------------------------------------------------- |
+| `npm run dev`        | API :3107 + Vite :5173 together, ctrl-c stops both |
+| `npm run dev:server` | Backend only, watch mode                           |
+| `npm run dev:web`    | Vite only — `/api` 502s without the backend        |
+| `npm run build:all`  | Type-check + build frontend and server             |
+| `npm run lint`       | ESLint                                             |
+| `npm run format`     | Prettier                                           |
+| `npm run deploy`     | Full build + ship to the server (see README)       |
+| `npm run deploy:dry` | Stage and show the rsync diff, change nothing      |
 
 ## Conventions
 
@@ -197,9 +199,10 @@ Full deploy, SSH, and troubleshooting detail lives in [README.md](README.md).
 
 ## Working agreements
 
-- **Never run the dev server.** Joshua keeps `npm run dev` and the backend
-  running himself and wants to stay in control of them. Don't start, restart, or
-  kill them.
+- **Never run the dev server.** `npm run dev` starts both the API and Vite, and
+  Joshua runs it himself — he wants to stay in control of those processes.
+  Don't start, restart, or kill them, and don't start the halves individually
+  either.
 - **Never drive the browser unprompted.** Playwright (and any other browser
   automation) is only for when Joshua has explicitly approved it. He prefers to
   do the testing himself and be told _when_ and _how_ to test. Ask about testing
