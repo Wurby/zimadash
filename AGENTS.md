@@ -114,12 +114,19 @@ a deliberate design choice and is not to be described in any tracked file.
 
 ### Color — slate and sky only
 
-Every token in `src/index.css` is a stock Tailwind slate or sky, named in a
-comment beside its value. Don't introduce another hue, a bespoke palette, or a
-bare `text-white` — reach for a token, or a slate/sky shade if you genuinely
-need one the tokens don't cover. Hex colors in the PWA manifests and
-`index.html` are those same shades written out, because neither format can take
-a CSS variable.
+Every token in `src/index.css` is a stock Tailwind slate or sky — with one
+deliberate exception: `--danger` is rose, because an error that shares the
+accent's hue cannot be told apart from a success at a glance. Each token names
+its shade in a comment beside the value.
+
+Don't introduce a fourth hue, a bespoke palette, or a bare `text-white` — reach
+for a token, or a slate/sky shade if you genuinely need one the tokens don't
+cover. Hex colors in the PWA manifests and `index.html` are those same shades
+written out, because neither format can take a CSS variable.
+
+Anything that should read as **lifted off the page** — a homepage tile, the
+stats badge, an action button — is `bg-surface` with a `border-line` border on
+the `bg-bg` page. That one relationship is what makes them a family.
 
 Adjacent surfaces are judged by perceptual lightness delta, not WCAG ratio; text
 pairs are judged by ratio and must clear 4.5:1 in **both** themes. `sky-600`

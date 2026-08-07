@@ -33,7 +33,7 @@ export function Header() {
             type="button"
             onClick={toggle}
             aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-            className="border-line hover:border-accent grid size-10 place-items-center rounded-lg border transition-colors"
+            className="border-line bg-surface hover:border-accent grid size-10 place-items-center rounded-lg border transition-colors"
           >
             <Icon name={theme === 'dark' ? 'sun' : 'moon'} />
           </button>

@@ -123,7 +123,7 @@ export function StatsPanel() {
         // which is why this is size-20 against the actions' size-9.
         // overflow-hidden so the branding strip clips to the rounded corners.
         // No padding of its own — the strip is the left padding.
-        className="border-line hover:border-accent flex size-22 items-stretch overflow-hidden rounded-xl border text-left transition-colors"
+        className="border-line bg-surface hover:border-accent flex size-22 items-stretch overflow-hidden rounded-xl border text-left transition-colors"
       >
         {/* Vertical wordmark, reading bottom-to-top like a spine. vertical-rl
             rotates the whole line rather than stacking glyphs, so it takes the

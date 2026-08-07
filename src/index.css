@@ -35,7 +35,7 @@
   --ink: oklch(20.8% 0.042 265.755); /* slate-900 */
   --ink-dim: oklch(55.4% 0.046 257.417); /* slate-500 */
   --accent: oklch(50% 0.134 242.749); /* sky-700 — sky-600 was 3.84:1, under 4.5 */
-  --danger: oklch(29.3% 0.066 243.157); /* sky-950   */
+  --danger: oklch(51.4% 0.222 16.935); /* rose-700 — 5.78:1, 134° off the accent */
 }
 
 .dark {
@@ -45,7 +45,7 @@
   --ink: oklch(96.8% 0.007 247.896); /* slate-100 */
   --ink-dim: oklch(70.4% 0.04 256.788); /* slate-400 */
   --accent: oklch(74.6% 0.16 232.661); /* sky-400   */
-  --danger: oklch(90.1% 0.058 230.902); /* sky-200   */
+  --danger: oklch(71.2% 0.194 13.428); /* rose-400 — 6.24:1, 141° off the accent */
 }
 
 html {
