@@ -63,12 +63,13 @@ function ActionButton({ action }: { action: ActionSummary }) {
   const tone =
     status === 'done'
       ? 'text-accent border-accent'
-      : status === 'failed'
+      : status === 'failed' || armed
         ? 'text-danger border-danger'
-        : armed
-          ? 'text-danger border-danger'
-          : 'border-line hover:border-accent'
+        : 'border-line hover:border-accent'
 
+  // A 1x1 cell on the header grid, so the label lives in the tooltip and the
+  // accessible name rather than beside the icon. The armed state reads as a
+  // colour change plus a ring — there is no room for "Confirm?" in a square.
   return (
     <button
       type="button"
@@ -76,12 +77,11 @@ function ActionButton({ action }: { action: ActionSummary }) {
       disabled={status === 'firing'}
       title={armed ? `Tap again to confirm — ${action.label}` : action.label}
       aria-label={armed ? `Confirm ${action.label}` : action.label}
-      className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 transition-colors disabled:opacity-50 ${tone}`}
+      className={`grid size-9 place-items-center rounded-lg border transition-colors disabled:opacity-50 ${tone} ${
+        armed ? 'ring-danger/40 ring-2' : ''
+      }`}
     >
       <Icon name={icon} className={status === 'firing' ? 'animate-pulse' : ''} />
-      <span className="hidden text-xs font-medium sm:inline">
-        {armed ? 'Confirm?' : action.label}
-      </span>
     </button>
   )
 }
@@ -95,11 +95,13 @@ export function QuickActions() {
 
   if (state.status !== 'ok' || state.data.length === 0) return null
 
+  // A fragment, not a wrapper — each action has to be its own cell in the
+  // header grid, and a div would make the whole set one cell.
   return (
-    <div className="flex items-center gap-2">
+    <>
       {state.data.map((action) => (
         <ActionButton key={action.id} action={action} />
       ))}
-    </div>
+    </>
   )
 }

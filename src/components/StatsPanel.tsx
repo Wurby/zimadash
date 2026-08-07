@@ -71,14 +71,18 @@ function HostStatsCard({ host, stats }: { host: string; stats: Stats }) {
  * One figure in the collapsed badge. The label carries its own weight — a bare
  * "12% · 34%" tells you nothing about which number is which, and this is meant
  * to be read at a glance from across the room.
+ *
+ * Label left, value right, so the percentages line up as a column.
  */
 function Readout({ label, percent }: { label: string; percent: number }) {
   return (
-    <span className="inline-flex items-baseline gap-1">
-      <span className="text-ink-dim text-[0.65rem] font-medium tracking-wide uppercase">
+    <span className="flex items-baseline justify-between gap-1.5">
+      <span className="text-ink-dim text-[0.6rem] leading-none font-medium tracking-wide uppercase">
         {label}
       </span>
-      <span className="font-mono text-xs tabular-nums">{Math.round(percent)}%</span>
+      <span className="font-mono text-[0.7rem] leading-none tabular-nums">
+        {Math.round(percent)}%
+      </span>
     </span>
   )
 }
@@ -116,40 +120,44 @@ export function StatsPanel() {
         type="button"
         onClick={() => setOpen((prev) => !prev)}
         aria-expanded={open}
-        className="border-line hover:border-accent flex items-center gap-2 rounded-lg border py-1 pr-2 pl-1.5 transition-colors"
+        // 2x2 on the header grid: two action cells plus the gap between them,
+        // which is why this is size-20 against the actions' size-9.
+        className="border-line hover:border-accent flex size-20 flex-col justify-between rounded-xl border p-2 text-left transition-colors"
       >
-        <Logo />
+        <span className="flex items-start justify-between">
+          <Logo className="size-5" />
+          <Icon
+            name="chevron"
+            className={`text-ink-dim transition-transform ${open ? 'rotate-180' : ''}`}
+          />
+        </span>
 
         {/* Not an aria-label on the button — that would replace the readout for
             screen readers instead of introducing it. */}
         <span className="sr-only">zimadash system stats,</span>
 
         {first ? (
-          <span className="flex items-baseline gap-2.5">
+          <span className="flex flex-col gap-1">
             <Readout label="cpu" percent={first.cpu.usagePercent ?? 0} />
             <Readout label="ram" percent={first.mem.usagePercent} />
           </span>
         ) : (
           <span
-            className={`font-mono text-xs tabular-nums ${
-              state.status === 'error' ? 'text-danger' : ''
+            className={`font-mono text-[0.7rem] leading-none tabular-nums ${
+              state.status === 'error' ? 'text-danger' : 'text-ink-dim'
             }`}
           >
-            {state.status === 'error' ? 'unavailable' : '···'}
+            {state.status === 'error' ? 'offline' : '···'}
           </span>
         )}
-
-        <Icon
-          name="chevron"
-          className={`text-ink-dim transition-transform ${open ? 'rotate-180' : ''}`}
-        />
       </button>
 
       {open && (
-        // Anchored left so it opens down-and-right from the badge, and capped
-        // in both axes against the viewport — the full panel is taller than a
-        // phone in landscape, so it scrolls rather than running off-screen.
-        <div className="border-line bg-surface absolute left-0 z-20 mt-2 max-h-[calc(100dvh-5rem)] w-[min(24rem,calc(100vw-1.5rem))] overflow-y-auto overscroll-contain rounded-2xl border p-5 shadow-lg">
+        // Anchored to the bottom-left of the badge so it opens down-and-right,
+        // and capped in both axes against the viewport — the full panel is
+        // taller than a phone in landscape, so it scrolls rather than running
+        // off-screen.
+        <div className="border-line bg-surface absolute top-full left-0 z-20 mt-2 max-h-[calc(100dvh-8rem)] w-[min(24rem,calc(100vw-1.5rem))] overflow-y-auto overscroll-contain rounded-2xl border p-5 shadow-lg">
           {state.status === 'loading' && <p className="text-ink-dim text-sm">loading…</p>}
 
           {state.status === 'error' && (

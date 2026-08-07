@@ -4,14 +4,13 @@
  * Letters are knocked out in the page background rather than white, so the mark
  * keeps full contrast in both themes — the accent is a mid blue in light and a
  * lighter blue in dark, and white would go muddy against the latter.
+ *
+ * Carries no size of its own: pass one, or it inherits the SVG default. Baking
+ * a default in would only fight the caller's class for the same specificity.
  */
 export function Logo({ className = '' }: { className?: string }) {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-      className={`h-[1.6em] w-[1.6em] shrink-0 ${className}`}
-    >
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={`shrink-0 ${className}`}>
       <rect className="fill-accent" width="24" height="24" rx="6.5" />
       <g
         className="stroke-bg"
