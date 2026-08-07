@@ -16,7 +16,7 @@ export function Home() {
   return (
     <main className="mx-auto max-w-6xl p-4 sm:p-6 lg:p-8">
       {tools.length === 0 ? (
-        <div className="border-line text-ink-dim rounded-2xl border border-dashed p-10 text-center">
+        <div className="border-line text-ink-dim border border-dashed p-10 text-center">
           <Icon name="grid" className="mx-auto mb-3 !h-8 !w-8 opacity-50" />
           <p className="text-sm">No tools yet.</p>
           <p className="mt-1 font-mono text-xs">
@@ -29,7 +29,7 @@ export function Home() {
             <Link
               key={meta.slug}
               to={`/${meta.slug}`}
-              className="border-line bg-surface hover:border-accent focus-visible:border-accent group flex min-h-36 items-stretch overflow-hidden rounded-2xl border shadow-sm transition-colors outline-none"
+              className="border-line bg-surface hover:border-accent focus-visible:border-accent group flex min-h-36 items-stretch overflow-hidden border shadow-sm transition-colors outline-none"
             >
               {/* Title strip — the header badge's pattern: vertical text on a
                   slate band flush to the left edge, doing the job the padding

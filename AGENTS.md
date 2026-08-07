@@ -128,6 +128,9 @@ Anything that should read as **lifted off the page** — a homepage tile, the
 stats badge, an action button — is `bg-surface` with a `border-line` border on
 the `bg-bg` page. That one relationship is what makes them a family.
 
+**Corners are square.** No `rounded-*` anywhere, and no `rx` on the SVGs. If you
+add a surface, it gets hard edges like everything else.
+
 **Titles run vertically.** A homepage tile and the stats badge both put their
 title in a slate band flush to the left edge (`bg-slate-200 dark:bg-slate-800`,
 `[writing-mode:vertical-rl]` plus `rotate-180` so it reads bottom-to-top). The

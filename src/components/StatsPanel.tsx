@@ -120,10 +120,9 @@ export function StatsPanel() {
         onClick={() => setOpen((prev) => !prev)}
         aria-expanded={open}
         // 2x2 on the header grid: two action cells plus the gap between them,
-        // which is why this is size-20 against the actions' size-9.
-        // overflow-hidden so the branding strip clips to the rounded corners.
+        // which is why this is size-22 against the actions' size-10.
         // No padding of its own — the strip is the left padding.
-        className="border-line bg-surface hover:border-accent flex size-22 items-stretch overflow-hidden rounded-xl border text-left transition-colors"
+        className="border-line bg-surface hover:border-accent flex size-22 items-stretch overflow-hidden border text-left transition-colors"
       >
         {/* Vertical wordmark, reading bottom-to-top like a spine. vertical-rl
             rotates the whole line rather than stacking glyphs, so it takes the
@@ -174,7 +173,7 @@ export function StatsPanel() {
         // and capped in both axes against the viewport — the full panel is
         // taller than a phone in landscape, so it scrolls rather than running
         // off-screen.
-        <div className="border-line bg-surface absolute top-full left-0 z-20 mt-2 max-h-[calc(100dvh-8rem)] w-[min(24rem,calc(100vw-1.5rem))] overflow-y-auto overscroll-contain rounded-2xl border p-5 shadow-lg">
+        <div className="border-line bg-surface absolute top-full left-0 z-20 mt-2 max-h-[calc(100dvh-8rem)] w-[min(24rem,calc(100vw-1.5rem))] overflow-y-auto overscroll-contain border p-5 shadow-lg">
           {state.status === 'loading' && <p className="text-ink-dim text-sm">loading…</p>}
 
           {state.status === 'error' && (

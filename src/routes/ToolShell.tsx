@@ -27,7 +27,7 @@ export function ToolShell() {
         <Link
           to="/"
           aria-label="Back to the dashboard"
-          className="border-line hover:border-accent rounded-lg border p-1.5 transition-colors"
+          className="border-line hover:border-accent border p-1.5 transition-colors"
         >
           <Icon name="back" />
         </Link>

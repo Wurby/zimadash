@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
   <!-- slate-900 ground, sky-400 mark. Deliberately one bold glyph: anything
        finer disappears at the 16px a browser tab actually renders. -->
-  <rect width="32" height="32" rx="7" fill="#0f172b" />
+  <rect width="32" height="32" fill="#0f172b" />
   <path
     d="M9.5 10h13l-13 12h13"
     fill="none"

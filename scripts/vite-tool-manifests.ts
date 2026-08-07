@@ -63,7 +63,7 @@ function escapeXml(value: string): string {
  */
 function iconSvg(meta: ToolMeta): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <rect width="512" height="512" rx="96" fill="${escapeXml(meta.themeColor)}"/>
+  <rect width="512" height="512" fill="${escapeXml(meta.themeColor)}"/>
   <text x="50%" y="50%" dy="0.35em" text-anchor="middle"
         font-family="ui-sans-serif, system-ui, -apple-system, sans-serif"
         font-size="256" fill="#f8fafc">${escapeXml(meta.glyph)}</text>

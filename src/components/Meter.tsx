@@ -22,9 +22,9 @@ export function Meter({
         <span className="text-ink-dim text-xs font-medium tracking-wide uppercase">{label}</span>
         <span className="font-mono text-sm tabular-nums">{Math.round(clamped)}%</span>
       </div>
-      <div className="bg-line mt-1.5 h-1.5 w-full overflow-hidden rounded-full">
+      <div className="bg-line mt-1.5 h-1.5 w-full overflow-hidden">
         <div
-          className="bg-accent h-full rounded-full transition-[width] duration-500"
+          className="bg-accent h-full transition-[width] duration-500"
           style={{ width: `${clamped}%` }}
         />
       </div>

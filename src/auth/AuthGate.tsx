@@ -113,7 +113,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   if (phase === 'unreachable') {
     return (
       <div className="grid min-h-dvh place-items-center p-6">
-        <div className="border-line bg-surface w-full max-w-sm rounded-2xl border p-6 text-center shadow-sm sm:p-8">
+        <div className="border-line bg-surface w-full max-w-sm border p-6 text-center shadow-sm sm:p-8">
           <h1 className="text-xl font-semibold tracking-tight">zimadash</h1>
           <p className="text-ink-dim mt-2 text-sm">Can't reach the dashboard server.</p>
           <button
@@ -122,7 +122,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
               setError(null)
               setPhase('checking')
             }}
-            className="bg-accent mt-6 w-full rounded-lg px-4 py-2.5 font-medium text-slate-50 transition-opacity dark:text-slate-900 hover:opacity-90"
+            className="bg-accent mt-6 w-full px-4 py-2.5 font-medium text-slate-50 transition-opacity dark:text-slate-900 hover:opacity-90"
           >
             Try again
           </button>
@@ -137,7 +137,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     <div className="grid min-h-dvh place-items-center p-6">
       <form
         onSubmit={submit}
-        className="border-line bg-surface w-full max-w-sm rounded-2xl border p-6 shadow-sm sm:p-8"
+        className="border-line bg-surface w-full max-w-sm border p-6 shadow-sm sm:p-8"
       >
         <h1 className="text-xl font-semibold tracking-tight">zimadash</h1>
         <p className="text-ink-dim mt-1 text-sm">{isSetup ? 'Choose a PIN.' : 'Enter your PIN.'}</p>
@@ -162,7 +162,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
             onChange={(e) => setPin(e.target.value)}
             autoFocus
             autoComplete={isSetup ? 'new-password' : 'current-password'}
-            className="border-line focus:border-accent focus:ring-accent/30 mt-1.5 w-full rounded-lg border bg-transparent px-3 py-2.5 font-mono text-lg tracking-widest outline-none focus:ring-2"
+            className="border-line focus:border-accent focus:ring-accent/30 mt-1.5 w-full border bg-transparent px-3 py-2.5 font-mono text-lg tracking-widest outline-none focus:ring-2"
           />
         </label>
 
@@ -175,7 +175,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
         <button
           type="submit"
           disabled={busy}
-          className="bg-accent mt-6 w-full rounded-lg px-4 py-2.5 font-medium text-slate-50 transition-opacity dark:text-slate-900 hover:opacity-90 disabled:opacity-50"
+          className="bg-accent mt-6 w-full px-4 py-2.5 font-medium text-slate-50 transition-opacity dark:text-slate-900 hover:opacity-90 disabled:opacity-50"
         >
           {busy ? 'working…' : isSetup ? 'Set PIN' : 'Unlock'}
         </button>

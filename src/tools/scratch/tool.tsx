@@ -85,7 +85,7 @@ function View() {
         disabled={note.status === 'loading'}
         placeholder="Anything you'll want on the other screen…"
         rows={16}
-        className="border-line bg-surface focus:border-accent focus:ring-accent/30 w-full resize-y rounded-2xl border p-4 font-mono text-sm outline-none focus:ring-2 disabled:opacity-50"
+        className="border-line bg-surface focus:border-accent focus:ring-accent/30 w-full resize-y border p-4 font-mono text-sm outline-none focus:ring-2 disabled:opacity-50"
       />
       <p className="text-ink-dim mt-2 h-4 font-mono text-xs">{saving ? 'saving…' : ''}</p>
     </div>
