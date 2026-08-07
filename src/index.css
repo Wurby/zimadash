@@ -28,12 +28,17 @@
   --danger: oklch(56% 0.19 25);
 }
 
+/* Adjacent surfaces are tuned by perceptual lightness delta, not by WCAG ratio:
+   the ratio formula's flare term compresses differences at the dark end, which
+   is why the light border below scores 1.35:1 and still reads perfectly well.
+   Light mode holds ~10 L between a tile border and its surface — dark needs at
+   least that much, and comfortably more, to separate as clearly. */
 .dark {
-  --bg: oklch(17% 0.012 250);
-  --surface: oklch(21.5% 0.014 250);
-  --line: oklch(29% 0.016 250);
+  --bg: oklch(15% 0.012 250); /* 8 L below surface — tiles lift off the page */
+  --surface: oklch(23% 0.014 250);
+  --line: oklch(36% 0.018 250); /* 13 L above surface — the border does the work */
   --ink: oklch(95% 0.004 250);
-  --ink-dim: oklch(68% 0.012 250);
+  --ink-dim: oklch(72% 0.012 250);
   --accent: oklch(72% 0.14 250);
   --danger: oklch(70% 0.16 25);
 }
