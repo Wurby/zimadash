@@ -57,6 +57,16 @@ the shell, and the Vite dev middleware does the same, so a tool installs
 identically in dev and production. Adding a tool needs no work here — the tool
 list is read from the generated manifests.
 
+**An installed app keeps the shell it was installed with.** Changing a
+manifest, an icon, a `<meta>`, or the safe-area handling will not show up on a
+phone that already has the tool on its home screen — it has to be removed and
+re-added. Deploying is not enough, so test those changes on a fresh install or
+you will be debugging something you already fixed.
+
+iOS also draws the web view under the status bar while sometimes reporting
+`env(safe-area-inset-top)` as 0, which is why the header floors its top padding
+behind the `installed-phone` variant in `src/index.css`.
+
 ## Refresh tiers
 
 There is no single global refresh interval. Data is polled at the cadence it

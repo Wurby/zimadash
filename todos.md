@@ -71,9 +71,10 @@ Everything needed before the first real tool can be written.
 - [x] Web app manifest per tool — distinct icon and `start_url` so a single tool
       installs to the phone home screen on its own
 - [x] Generated icon per tool from its `meta.json` color and glyph
-- [ ] Real icon art. The generated SVGs are placeholders, and iOS wants a PNG
-      `apple-touch-icon` — the current SVG one may not take
-- [ ] Verify install works from iOS Safari, which is fussy about this
+- [x] Installing from a tool page installs that tool, clear of the notch —
+      verified on iOS
+- [ ] Real icon art. The generated SVGs are placeholders; swap them for drawn
+      ones, and emit PNG `apple-touch-icon`s while you're there
 
 ### Homepage
 
