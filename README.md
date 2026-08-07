@@ -219,9 +219,25 @@ npm run deploy:dry
 | `--clean`           | Wipe `node_modules` and all build output, then build from zero |
 | `--install-service` | Also render and install the systemd unit                       |
 | `--no-verify`       | Skip the post-deploy health check                              |
+| `--no-git`          | Skip the commit-and-push step                                  |
 | `--host <ssh-host>` | Deploy to a different SSH host                                 |
 
 Flags go after `--`, e.g. `npm run deploy -- --clean --install-service`.
+
+### Committing before a deploy
+
+Whatever ships should be traceable back to a commit, so the deploy stages any
+outstanding work, commits it, and pushes before it builds. `claude -p` writes
+the commit message from the staged diff; if Claude is unavailable or returns
+nothing, it falls back to a generic message rather than blocking the deploy.
+
+Claude only writes the message. Staging, committing, and pushing are plain git
+in the script — handing the whole job to a headless agent would mean granting it
+permission to run git against the repo mid-deploy, and the failure modes get
+much harder to see. Dry runs never commit or push.
+
+Note that it stages with `git add -A`, so anything untracked and not ignored
+goes in too. `--no-git` opts out.
 
 ### What lands on the server
 
