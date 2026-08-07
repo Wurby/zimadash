@@ -105,13 +105,59 @@ function isTokenValid(token: string): boolean {
 }
 
 // ─── Throttling ──────────────────────────────────────────────────────────────
+//
+// Two layers, because the obvious one cannot be trusted.
+//
+// Per-caller counting keys off a forwarded header, and the caller writes that
+// header. Rotating it gives you a fresh budget every request, so it catches a
+// careless attacker and nothing more. It is friction, not a boundary.
+//
+// The layer that actually holds is global and keyed off nothing: a running
+// count of consecutive failures that decides how long the *next* attempt waits,
+// and a rule that only one attempt is ever in flight. No header dodges either.
+// Guessing degrades to a handful of tries a minute however many connections you
+// open, and it survives a restart because the count lives in DATA_DIR.
+//
+// The delay grows rather than hard-locking on purpose. A hard global lock would
+// let anyone on the internet lock the owner out by failing on purpose; waiting
+// costs an attacker everything and the owner one pause, since a correct PIN
+// clears the count.
+
+const THROTTLE_FILE = 'throttle.json';
+
+/** Spoofed keys must not grow the map without bound. */
+const MAX_TRACKED_KEYS = 1_000;
+
+/** Typos shouldn't cost anything. */
+const FREE_ATTEMPTS = 4;
+const BASE_DELAY_MS = 250;
+const MAX_DELAY_MS = 10_000;
 
 const attempts = new Map<string, { count: number; lockedUntil: number }>();
 
+/** Only one login is ever processed at a time, so concurrency buys nothing. */
+let loginInFlight = false;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function readFailures(): number {
+  return readJson<{ failures: number }>(THROTTLE_FILE)?.failures ?? 0;
+}
+
+function writeFailures(failures: number): void {
+  writeJson(THROTTLE_FILE, { failures });
+}
+
+function delayFor(failures: number): number {
+  if (failures <= FREE_ATTEMPTS) return 0;
+  return Math.min(BASE_DELAY_MS * 2 ** (failures - FREE_ATTEMPTS), MAX_DELAY_MS);
+}
+
 function clientKey(req: Request): string {
-  // Behind the Cloudflare Tunnel every request arrives from localhost, so the
-  // forwarded header is the only thing that distinguishes callers. It is
-  // spoofable — treat this as friction, not as a security boundary.
+  // Behind the tunnel every request arrives from localhost, so a forwarded
+  // header is the only thing distinguishing callers — and the caller sets it.
   const forwarded = req.headers['cf-connecting-ip'] ?? req.headers['x-forwarded-for'];
   const value = Array.isArray(forwarded) ? forwarded[0] : forwarded;
   return (value?.split(',')[0].trim() || req.ip) ?? 'unknown';
@@ -124,6 +170,12 @@ function lockRemaining(key: string): number {
 }
 
 function recordFailure(key: string): void {
+  if (!attempts.has(key) && attempts.size >= MAX_TRACKED_KEYS) {
+    // Map iteration is insertion-ordered, so this drops the stalest key.
+    const oldest = attempts.keys().next().value;
+    if (oldest !== undefined) attempts.delete(oldest);
+  }
+
   const entry = attempts.get(key) ?? { count: 0, lockedUntil: 0 };
   entry.count += 1;
   if (entry.count >= MAX_ATTEMPTS) {
@@ -155,27 +207,49 @@ export function handleSetup(req: Request, res: Response): void {
   res.json({ token: issueToken() });
 }
 
-export function handleLogin(req: Request, res: Response): void {
-  const key = clientKey(req);
-  const remaining = lockRemaining(key);
-  if (remaining > 0) {
-    res.status(429).json({ error: 'too many attempts', retryAfterMs: remaining });
+export async function handleLogin(req: Request, res: Response): Promise<void> {
+  // Refuse rather than queue. Queuing would let an attacker park a thousand
+  // connections and get a thousand guesses for one wait.
+  if (loginInFlight) {
+    res.status(429).json({ error: 'too many attempts' });
     return;
   }
+  loginInFlight = true;
 
-  if (!isPinConfigured()) {
-    res.status(409).json({ error: 'no pin has been set yet' });
-    return;
+  try {
+    const key = clientKey(req);
+    const remaining = lockRemaining(key);
+    if (remaining > 0) {
+      res.status(429).json({ error: 'too many attempts', retryAfterMs: remaining });
+      return;
+    }
+
+    if (!isPinConfigured()) {
+      res.status(409).json({ error: 'no pin has been set yet' });
+      return;
+    }
+
+    const failures = readFailures();
+    const wait = delayFor(failures);
+    if (wait > 0) await sleep(wait);
+
+    if (typeof req.body?.pin !== 'string' || !verifyPin(req.body.pin)) {
+      recordFailure(key);
+      writeFailures(failures + 1);
+      res.status(401).json({ error: 'incorrect pin' });
+      return;
+    }
+
+    // Knowing the PIN clears the debt, so the owner never inherits an
+    // attacker's backoff for more than a single attempt.
+    attempts.delete(key);
+    writeFailures(0);
+    res.json({ token: issueToken() });
+  } catch {
+    res.status(500).json({ error: 'login failed' });
+  } finally {
+    loginInFlight = false;
   }
-
-  if (typeof req.body?.pin !== 'string' || !verifyPin(req.body.pin)) {
-    recordFailure(key);
-    res.status(401).json({ error: 'incorrect pin' });
-    return;
-  }
-
-  attempts.delete(key);
-  res.json({ token: issueToken() });
 }
 
 /** Gate for everything else under /api. */

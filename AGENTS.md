@@ -115,6 +115,10 @@ Read `server/src/auth.ts` for how it works. Rules that must hold:
   verify a deploy and has no token.
 - This faces the public internet behind nothing but a PIN. Don't weaken the
   throttling, and don't add an endpoint that leaks whether a guess was close.
+- Throttling has to hold **without trusting the caller**. Anything keyed off a
+  request header is friction only — the caller writes those. The guarantee comes
+  from state the caller cannot influence, it survives a restart, and it must
+  never be something a stranger can trigger to lock the owner out.
 
 **Do not document auth internals** in `README.md`, this file, or `todos.md` —
 no storage format, no session lifetime, no lockout thresholds. The repo is
@@ -256,8 +260,12 @@ Full deploy, SSH, and troubleshooting detail lives in [README.md](README.md).
   automation) is only for when Joshua has explicitly approved it. He prefers to
   do the testing himself and be told _when_ and _how_ to test. Ask about testing
   only once all building is finished, as the final step.
-- **Commit after every approval.** When Joshua approves a change, commit it
-  before moving on. The remote is `git@github.com:Wurby/zimadash.git`.
+- **Don't commit after every change.** `npm run deploy` stages, commits, and
+  pushes whatever is outstanding, so per-change commits are noise. Leave work in
+  the tree and let the deploy sweep it up. Commit by hand only when the tree is
+  about to be disturbed — a history rewrite, a branch switch, or a change big
+  enough that you'd want to revert it on its own later. The remote is
+  `git@github.com:Wurby/zimadash.git`.
 - **Ask before widening scope.** Don't infer features from what already exists —
   most of what exists is placeholder.
 - Keep `README.md` (human-facing), this file (agent-facing), and `todos.md`
