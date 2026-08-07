@@ -1,5 +1,13 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { api, ApiError, getToken, setToken, SESSION_EXPIRED_EVENT } from '../lib/api'
+import {
+  api,
+  ApiError,
+  getPinLength,
+  getToken,
+  setPinLength,
+  setToken,
+  SESSION_EXPIRED_EVENT,
+} from '../lib/api'
 
 type Phase = 'checking' | 'unreachable' | 'setup' | 'login' | 'authed'
 
@@ -79,25 +87,48 @@ export function AuthGate({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired)
   }, [])
 
-  async function submit(event: React.FormEvent) {
-    event.preventDefault()
+  async function attempt(value: string) {
+    if (busy) return
     setError(null)
 
-    if (pin.length < MIN_PIN_LENGTH) {
+    if (value.length < MIN_PIN_LENGTH) {
       setError(`pin must be at least ${MIN_PIN_LENGTH} characters`)
       return
     }
 
     setBusy(true)
     try {
-      setToken(await authenticate(phase === 'setup', pin))
+      const isSetup = phase === 'setup'
+      setToken(await authenticate(isSetup, value))
+      // Remember the length now that it's proven correct, so this device can
+      // unlock itself next time.
+      setPinLength(value.length)
       setPin('')
       setPhase('authed')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'something went wrong')
+      // Clear on failure so a retype starts clean — otherwise the auto-submit
+      // couldn't fire again without deleting the whole thing by hand.
+      setPin('')
     } finally {
       setBusy(false)
     }
+  }
+
+  function submit(event: React.FormEvent) {
+    event.preventDefault()
+    void attempt(pin)
+  }
+
+  /**
+   * Unlock as soon as the PIN is as long as it was last time this device signed
+   * in. Never during setup — you're choosing the PIN then, and stopping at four
+   * characters would silently forbid a longer one.
+   */
+  function change(value: string) {
+    setPin(value)
+    const known = getPinLength()
+    if (phase === 'login' && known !== null && value.length === known) void attempt(value)
   }
 
   if (phase === 'authed') return <>{children}</>
@@ -159,7 +190,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
           <input
             type="password"
             value={pin}
-            onChange={(e) => setPin(e.target.value)}
+            onChange={(e) => change(e.target.value)}
             autoFocus
             autoComplete={isSetup ? 'new-password' : 'current-password'}
             className="border-line focus:border-accent focus:ring-accent/30 mt-1.5 w-full border bg-transparent px-3 py-2.5 font-mono text-lg tracking-widest outline-none focus:ring-2"

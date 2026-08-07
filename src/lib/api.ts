@@ -28,6 +28,34 @@ export function clearToken(): void {
   }
 }
 
+const PIN_LENGTH_KEY = 'zimadash.pinLength'
+
+/**
+ * How long the PIN is, remembered per device so the unlock screen can submit
+ * itself once you've typed that many characters.
+ *
+ * Deliberately learned from a *successful* login rather than asked of the
+ * server: anyone who can read this already knew the PIN, so it tells an
+ * attacker nothing. A device that has never signed in has no idea how long the
+ * PIN is and still has to submit by hand.
+ */
+export function getPinLength(): number | null {
+  try {
+    const stored = Number(localStorage.getItem(PIN_LENGTH_KEY))
+    return Number.isInteger(stored) && stored > 0 ? stored : null
+  } catch {
+    return null
+  }
+}
+
+export function setPinLength(length: number): void {
+  try {
+    localStorage.setItem(PIN_LENGTH_KEY, String(length))
+  } catch {
+    /* private browsing — you just keep pressing enter */
+  }
+}
+
 export class ApiError extends Error {
   status: number
   body: Record<string, unknown>

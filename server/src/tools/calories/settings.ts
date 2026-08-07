@@ -19,10 +19,10 @@ const VERSION = 1;
  * ΔE 27 in normal vision, 11 under protanopia — rather than just for looks.
  */
 const CORE_DEFAULTS: Array<Pick<FieldConfig, 'id' | 'label' | 'unit' | 'color'>> = [
-  { id: 'calories', label: 'Calories', unit: 'kcal', color: '#2395ad' },
+  { id: 'calories', label: 'Calories', unit: 'kcal', color: '#9821dc' },
   { id: 'protein', label: 'Protein', unit: 'g', color: '#f830a2' },
-  { id: 'fat', label: 'Fat', unit: 'g', color: '#b38320' },
-  { id: 'carbs', label: 'Carbs', unit: 'g', color: '#1465e3' },
+  { id: 'fat', label: 'Fat', unit: 'g', color: '#f75221' },
+  { id: 'carbs', label: 'Carbs', unit: 'g', color: '#1260d8' },
   { id: 'fibre', label: 'Fibre', unit: 'g', color: '#23a12f' },
 ];
 

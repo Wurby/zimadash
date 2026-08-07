@@ -14,29 +14,33 @@ export const CORE_FIELDS = ['calories', 'protein', 'fat', 'carbs', 'fibre'] as c
 /**
  * The colors a field can be given. Generated, not hand-picked.
  *
- * Hand-picking shades produced near-duplicates — two greens a few ΔE apart that
- * looked like the same swatch twice. These come from a hue sweep filtered to
- * only what clears **3:1 against both the light and dark surfaces**, which is a
- * far narrower lightness window than either theme band implies, and then chosen
- * greedily so no two are within ΔE 11 of each other.
+ * Every one clears 3:1 against **both** the light and the dark surface, which
+ * is a far narrower lightness window than either theme's band implies, and no
+ * two are within ΔE 11 of each other.
  *
- * Twelve is close to the ceiling: demanding every pair be distinguishable
- * *within one plot* (ΔE 15) allows only nine, and that stricter bar isn't
- * needed here because each field owns its own chart and every swatch is drawn
- * beside its label. The one place colors do sit side by side is the macro
- * breakdown on the calories bar, and those three defaults are checked against
- * the stricter bar.
+ * They also carry a chroma floor, which is what fixes telling them apart in
+ * light mode. A dull color on a dark surface still reads as a color because it
+ * is so much lighter than its background; the same color on near-white reads as
+ * mud, and several muds look alike. Cyan, olive and amber are absent for that
+ * reason — sRGB cannot make them vivid *and* dark enough to hold contrast on
+ * white, and relaxing the contrast floor to 2.3:1 was measured to buy almost
+ * nothing (chroma 0.105 → 0.116), so they were cut instead.
+ *
+ * Eleven is near the ceiling: requiring every pair to be distinguishable
+ * *within one plot* (ΔE 15) allows only nine. That stricter bar isn't needed
+ * here because each field owns its own chart and every swatch is drawn beside
+ * its label. The one place colors do sit side by side is the macro breakdown on
+ * the calories bar, and those three defaults are held to it.
  *
  * Ordered around the wheel so the picker reads as a spectrum.
  */
 export const SWATCHES = [
-  '#f63e1f',
-  '#a34c14',
-  '#b38320',
-  '#5c6c13',
+  '#f75221',
+  '#ac5116',
+  '#3b7413',
   '#23a12f',
-  '#2395ad',
-  '#1465e3',
+  '#2393dd',
+  '#1260d8',
   '#9778f7',
   '#9821dc',
   '#e02cf1',
