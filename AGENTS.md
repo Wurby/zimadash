@@ -50,6 +50,13 @@ call. An action marked `"confirm": true` needs a second tap before it fires.
 **Each tool is its own installable PWA** — distinct icon, distinct start URL —
 so a single tool can live on the phone home screen on its own.
 
+"Add to Home Screen" reads the manifest link, apple-touch-icon, and title from
+the document **as delivered**, so those tags cannot be corrected from React
+after the fact. `server/src/appShell.ts` rewrites them per URL before sending
+the shell, and the Vite dev middleware does the same, so a tool installs
+identically in dev and production. Adding a tool needs no work here — the tool
+list is read from the generated manifests.
+
 ## Refresh tiers
 
 There is no single global refresh interval. Data is polled at the cadence it
@@ -164,7 +171,8 @@ server/src/
   paths.ts            DATA_DIR — persistent state, outside the artifact
   cache.ts            stats polling loop
   actions.ts          quick-action proxy — credentials never reach the browser
-  shared/             types.ts + tiers.ts — imported by BOTH sides
+  appShell.ts         per-tool install metadata, rewritten before the shell ships
+  shared/             types.ts, tiers.ts, appShell.ts — imported by BOTH sides
   tools/registry.ts   the one list of server-side tools
   tools/<slug>.ts     a tool's /api/tools/<slug> routes
 scripts/

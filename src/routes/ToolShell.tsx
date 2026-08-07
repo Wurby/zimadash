@@ -15,7 +15,7 @@ export function ToolShell() {
   const { slug } = useParams()
   const tool = findTool(slug)
 
-  usePwaManifest(tool?.meta.slug ?? null, tool?.meta.themeColor)
+  usePwaManifest(tool?.meta.slug ?? null, tool?.meta.shortName, tool?.meta.themeColor)
 
   if (!tool) return <NotFound />
 

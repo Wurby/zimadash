@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { startPolling, getCachedStats, getAllHostIds } from './cache.js';
 import { handleLogin, handleSetup, handleStatus, initSessionSecret, requireAuth } from './auth.js';
 import { handleFireAction, handleListActions } from './actions.js';
+import { createAppShell } from './appShell.js';
 import { serverTools } from './tools/registry.js';
 import { DATA_DIR, ensureDataDir } from './paths.js';
 
@@ -68,8 +69,19 @@ for (const tool of serverTools) {
 // token. Serving it unauthenticated is what makes the PIN screen reachable.
 
 app.use(express.static(STATIC_DIR));
-app.get('*', (_req, res) => {
-  res.sendFile(path.join(STATIC_DIR, 'index.html'));
+
+// The shell is rewritten per tool so "Add to Home Screen" installs the tool you
+// are looking at, not the dashboard. Safari reads that metadata from the
+// document as delivered, so it cannot be fixed up client-side afterwards.
+const appShell = createAppShell(STATIC_DIR);
+
+app.get('*', (req, res) => {
+  const html = appShell.render(req.path);
+  if (!html) {
+    res.sendFile(path.join(STATIC_DIR, 'index.html'));
+    return;
+  }
+  res.type('html').send(html);
 });
 
 startPolling();

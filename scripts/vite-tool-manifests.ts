@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Plugin } from 'vite'
+import { applyShellVariant, slugFromPath } from '../server/src/shared/appShell.ts'
 
 /**
  * Emit a web app manifest and an icon per tool, so each tool installs to the
@@ -119,6 +120,25 @@ function filesFor(all: ToolMeta[]): Map<string, { body: string; type: string }> 
 export function toolManifests(): Plugin {
   return {
     name: 'zimadash:tool-manifests',
+
+    // Dev parity with the production server: rewrite the shell's install
+    // metadata for whichever tool the URL points at, so installing from
+    // /scratch installs Scratch. Safari reads this from the document as
+    // delivered, so it can't be corrected from React afterwards.
+    transformIndexHtml: {
+      order: 'pre',
+      handler(html, ctx) {
+        const slug = slugFromPath(ctx.path ?? '/')
+        const meta = readToolMeta().find((tool) => tool.slug === slug)
+        if (!meta) return html
+
+        return applyShellVariant(html, {
+          slug: meta.slug,
+          shortName: meta.shortName,
+          themeColor: meta.themeColor,
+        })
+      },
+    },
 
     // Read fresh on every request in dev so adding a tool doesn't need a restart.
     configureServer(server) {
