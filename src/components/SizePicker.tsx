@@ -4,11 +4,17 @@ import { GRID_GAP, SIZE_OPTIONS, type Span } from '@shared/layout'
 /**
  * Pick a tile's size, in edit mode, from the tile itself.
  *
- * The chips are one grid unit each — the same size as a quick action — so the
- * picker is built out of the dashboard's own measurements rather than its own
- * set of numbers. Four across and two down puts all seven sizes plus a reset in
- * a block two units tall, which is short enough to sit beside anything from a
- * 3x3 upwards.
+ * The chips are one grid unit each — the same size as a quick action, and the
+ * same size as the smallest thing you can pick — so the picker is built out of
+ * the dashboard's own measurements rather than its own set of numbers.
+ *
+ * Seven across and two down is not arbitrary: the thirteen sizes plus a reset
+ * come to exactly fourteen cells, and **staying two rows tall is what keeps the
+ * placement good.** A block of `2u + 26` is shorter than a 3-row tile at every
+ * unit size, so it still earns the side; a third row would push that threshold
+ * out to 4-row tiles and drop most of the grid to below-placement. Growing
+ * sideways costs nothing by comparison, because a phone sends the picker
+ * underneath on width alone whatever shape it is.
  *
  * **Placement.** Beside the tile when the block is no taller than the tile is,
  * so it never hangs over the tile's neighbours; below it otherwise. Left
@@ -17,7 +23,7 @@ import { GRID_GAP, SIZE_OPTIONS, type Span } from '@shared/layout'
  * pick — resizing a tile on a densely packed grid moves the tile.
  */
 
-const COLUMNS = 4
+const COLUMNS = 7
 const ROWS = 2
 const PADDING = 4
 const BORDER = 1

@@ -1,7 +1,15 @@
 import { useState } from 'react'
 import { Link } from 'react-router'
 import type { ActionSummary } from '@shared/types'
-import { itemId, overrideSpan, resolveSpan, spanFor, type Span } from '@shared/layout'
+import {
+  itemId,
+  overrideSpan,
+  resolveSpan,
+  spanFor,
+  STATS_SIZE,
+  type SizeBySurface,
+  type Span,
+} from '@shared/layout'
 import { tools } from '../tools/registry'
 import { api } from '../lib/api'
 import { usePolled } from '../lib/refresh'
@@ -86,30 +94,39 @@ export function Home() {
 
   const { order, sizes, reorder, resize } = useLayout(present)
 
+  // Tools and the stats badge have a size worth choosing. The actions and the
+  // two system buttons don't — they are a single icon, and one unit is what an
+  // icon is.
+  function resizable(id: string): boolean {
+    return id.startsWith('tool:') || id === itemId.stats
+  }
+
   // A tap in edit mode has nowhere else to go — the drag only arms once the
   // pointer travels, and the tile's contents are inert — so it opens the size
-  // picker. Only tool tiles have a size worth choosing: actions and the two
-  // system buttons are one unit by definition, and the stats tile sizes itself
-  // from whether it is expanded.
+  // picker.
   const drag = useReorder(order, reorder, editing, (id) => {
-    setSizing((was) => (was === id || !id.startsWith('tool:') ? null : id))
+    setSizing((was) => (was === id || !resizable(id) ? null : id))
+    // The badge's chosen size is its *collapsed* size, so picking one while it
+    // is expanded would change nothing you could see. Collapse it to sit under
+    // the picker it is about to be sized by.
+    if (id === itemId.stats) setStatsOpen(false)
   })
 
   function toolFor(id: string) {
     return tools.find((candidate) => itemId.tool(candidate.meta.slug) === id)
   }
 
+  /** The size a thing asks for, before any override of yours. */
+  function declaredFor(id: string): SizeBySurface | undefined {
+    return id === itemId.stats ? STATS_SIZE : toolFor(id)?.meta.size
+  }
+
   function spanOf(id: string): Span {
-    if (id === itemId.stats) {
-      // Expanding pushes the grid down rather than dropping over it, so it has
-      // to actually claim the space.
-      if (statsOpen) return [Math.min(geometry.columns, 8), 6]
-      return geometry.breakpoint === 'sm' ? [2, 2] : [4, 4]
-    }
-    if (id.startsWith('tool:')) {
-      return resolveSpan(toolFor(id)?.meta.size, sizes[id], geometry.breakpoint)
-    }
-    return [1, 1]
+    // Expanding pushes the grid down rather than dropping over it, so it has to
+    // actually claim the space — more than you would ever pick for it at rest.
+    if (id === itemId.stats && statsOpen) return [Math.min(geometry.columns, 8), 6]
+    if (!resizable(id)) return [1, 1]
+    return resolveSpan(declaredFor(id), sizes[id], geometry.breakpoint)
   }
 
   function render(id: string) {
@@ -159,7 +176,7 @@ export function Home() {
     <main className="mx-auto max-w-6xl p-4 sm:p-6 lg:p-8">
       {editing && (
         <p className="text-ink-dim mb-3 font-mono text-xs">
-          drag to rearrange · tap a tool to resize · tap the tick when you're done
+          drag to rearrange · tap a tile to resize · tap the tick when you're done
         </p>
       )}
 
@@ -205,7 +222,7 @@ export function Home() {
           item={sizing}
           unit={geometry.unit}
           value={overrideSpan(sizes[sizing], geometry.breakpoint)}
-          declared={spanFor(toolFor(sizing)?.meta.size, geometry.breakpoint)}
+          declared={spanFor(declaredFor(sizing), geometry.breakpoint)}
           onPick={(span) => resize(sizing, geometry.breakpoint, span)}
           onClose={() => setSizing(null)}
         />

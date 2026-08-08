@@ -43,19 +43,43 @@ export function spanFor(size: SizeBySurface | undefined, at: Breakpoint): Span {
 /**
  * The sizes a tile can be given from the dashboard, as [wide, tall].
  *
- * Deliberately a short closed list rather than a free drag-handle. Every one
- * fits inside a phone's eight columns, so the same choice is available on every
- * surface, and a tile can only ever land on a size that was designed for.
+ * Deliberately a closed list rather than a free drag-handle. Every one fits
+ * inside a phone's eight columns, so the same choice exists on every surface,
+ * and a tile can only ever land on a size that was designed for.
+ *
+ * The ladder starts at 1x1 — one grid unit, the size of a quick action — so a
+ * badge can be shrunk to sit among the actions rather than lording over them.
+ * Ordered by area so the list reads small-to-large, which is also what puts the
+ * seven smallest on the picker's first row.
  */
 export const SIZE_OPTIONS: Span[] = [
+  [1, 1],
+  [2, 1],
+  [1, 2],
+  [2, 2],
+  [3, 2],
+  [2, 3],
   [3, 3],
-  [3, 4],
   [4, 3],
+  [3, 4],
   [4, 4],
-  [4, 6],
   [6, 4],
+  [4, 6],
   [6, 6],
 ];
+
+/**
+ * What the system stats badge is, before you say otherwise.
+ *
+ * It has no `meta.json` to declare a size in — it isn't a tool — so its default
+ * lives here instead, in the same shape a tool would use. Small on a phone
+ * where it is the least interesting thing on screen; a proper square once
+ * there's room.
+ *
+ * This is only the *collapsed* size. Expanded, the badge claims whatever it
+ * needs to show every host without scrolling inside itself.
+ */
+export const STATS_SIZE: SizeBySurface = { sm: [2, 2], md: [4, 4], lg: [4, 4] };
 
 /**
  * What a tile is actually sized at: your choice if you made one on *this*

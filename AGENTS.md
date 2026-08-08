@@ -51,13 +51,31 @@ hole a larger one couldn't fit.
 
 **You own both the size and the position.** A tool declares a size per surface
 in `meta.json`, but that is only where it starts — in edit mode, tapping a tool
-tile opens a picker of sizes beside it and your choice wins from then on. The
-order is one list shared by every device, because dense packing already makes
-the same sequence fill a phone and a wall differently. Sizes are stored **per
-surface**: six columns is three quarters of a phone and barely a third of the
-wall, so a size chosen in your hand would be a postage stamp across the room.
-Setting one surface deliberately leaves the others alone. The picker's reset
-chip hands a tile back to its declared size.
+tile or the stats badge opens a picker of sizes beside it and your choice wins
+from then on. The picker's reset chip hands the thing back to its declared size.
+The badge has no `meta.json` to declare one in, so its default is `STATS_SIZE`
+in `shared/layout.ts`, in the same shape a tool would use; that is its
+_collapsed_ size only, since expanding it has to claim room for every host.
+
+Actions, the theme toggle and the edit button are not resizable. They are a
+single icon, and one unit is what an icon is.
+
+The ladder runs from 1x1 — one unit, the size of a quick action — up to 6x6, and
+every rung fits inside a phone's eight columns so the same choice exists on
+every surface. It is a closed list rather than a drag-handle: a tile can only
+land on a size that was designed for. `SIZE_OPTIONS` has thirteen rungs and the
+picker is seven across by two down, which is exactly those plus the reset chip.
+**Keep it two rows.** A two-row block is shorter than a 3-row tile at every unit
+size, so it still fits beside one; a third row pushes that threshold out to
+4-row tiles and drops most of the grid to below-placement. Widening is free by
+comparison — a phone sends the picker underneath on width alone whatever shape
+it is.
+
+The order is one list shared by every device, because dense packing already
+makes the same sequence fill a phone and a wall differently. Sizes are stored
+**per surface**: six columns is three quarters of a phone and barely a third of
+the wall, so a size chosen in your hand would be a postage stamp across the
+room. Setting one surface deliberately leaves the others alone.
 
 A tapped action swaps its icon for a checkmark for 5 seconds.
 

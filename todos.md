@@ -113,8 +113,8 @@ one-tap re-logging of recent meals.
 **Phase 3 (the grid).** The header is gone; tools, actions, the theme toggle and
 the system readout all live on one grid whose unit is measured per surface. Both
 the arrangement and the sizes are yours: drag to reorder, and in edit mode tap a
-tool tile to get a picker of sizes beside it. A tool's declared size is only
-where it starts.
+tool tile or the stats badge to get a picker of sizes beside it, anywhere from
+1x1 up to 6x6. A declared size is only where it starts.
 
 Sizes are stored per surface, because six columns is three quarters of a phone
 and barely a third of the wall — so setting one screen deliberately leaves the
