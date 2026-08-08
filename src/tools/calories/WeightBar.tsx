@@ -31,11 +31,14 @@ export function WeightBar({
 
   return (
     <div>
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="font-mono text-sm tabular-nums">{trendLb.toFixed(1)}</span>
+      <div className="flex items-baseline gap-1.5">
+        {/* Labelled like the macro rows above it — a bare number sitting under
+            "protein 42" reads as another macro rather than a body weight. */}
+        <span className="text-ink-dim text-[0.6rem] tracking-wide uppercase">Weight</span>
+        <span className="ml-auto font-mono text-sm tabular-nums">{trendLb.toFixed(1)}</span>
         {goal !== null && (
-          <span className="text-ink-dim font-mono text-[0.65rem] tabular-nums">
-            {atGoal ? 'at goal' : `${goal} lb`}
+          <span className="text-ink-dim font-mono text-[0.6rem] tabular-nums">
+            {atGoal ? '· at goal' : `/ ${goal}`}
           </span>
         )}
       </div>

@@ -158,7 +158,12 @@ export function Home() {
               data-item={id}
               style={itemStyle(spanOf(id), geometry)}
               {...(id === itemId.edit ? {} : drag.handlers(id))}
-              className={`min-w-0 ${
+              // min-h-0 matters: a grid item defaults to min-height:auto, so any
+              // tile whose contents outgrow its span quietly stretches the row
+              // track and knocks every other tile off the grid. Clipping keeps
+              // the declared size honest — if something doesn't fit, the tool
+              // should declare a bigger span rather than bend the layout.
+              className={`min-h-0 min-w-0 overflow-hidden ${
                 grabbable ? 'cursor-grab touch-none select-none active:cursor-grabbing' : ''
               } ${drag.dragging === id ? 'opacity-40' : ''}`}
             >

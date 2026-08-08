@@ -3,7 +3,6 @@ import { api } from '../lib/api'
 import { usePolled } from '../lib/refresh'
 import { formatBytes, formatRate, formatTime } from '../lib/format'
 import { Icon } from './Icon'
-import { Meter } from './Meter'
 
 /**
  * System stats as a tile on the dashboard.
@@ -38,44 +37,70 @@ function Readout({ label, percent }: { label: string; percent: number }) {
   )
 }
 
+/**
+ * The expanded readout, built to fit its span rather than scroll inside it.
+ *
+ * Scrolling within a tile is the wrong shape — the tile has claimed a size on
+ * the grid, and hiding half its contents behind a gesture makes that size a
+ * lie. So the meters drop their detail lines and the byte figures move onto the
+ * label row, which is the same information in a third of the height.
+ */
 function HostStatsCard({ host, stats }: { host: string; stats: Stats }) {
+  const rows = [
+    { label: 'CPU', percent: stats.cpu.usagePercent ?? 0, note: `${stats.cpu.cores} cores` },
+    {
+      label: 'RAM',
+      percent: stats.mem.usagePercent,
+      note: `${formatBytes(stats.mem.usedBytes)} / ${formatBytes(stats.mem.totalBytes)}`,
+    },
+    {
+      label: stats.disk.mount,
+      percent: stats.disk.usagePercent,
+      note: `${formatBytes(stats.disk.usedBytes)} / ${formatBytes(stats.disk.totalBytes)}`,
+    },
+    {
+      label: stats.rootDisk.mount,
+      percent: stats.rootDisk.usagePercent,
+      note: `${formatBytes(stats.rootDisk.usedBytes)} / ${formatBytes(stats.rootDisk.totalBytes)}`,
+    },
+  ]
+
   return (
     <section>
-      <h3 className="text-sm font-semibold tracking-tight">{host}</h3>
-
-      <div className="mt-3 space-y-3">
-        <Meter
-          label="CPU"
-          percent={stats.cpu.usagePercent ?? 0}
-          detail={`${stats.cpu.cores} cores · load ${stats.cpu.loadAvg1.toFixed(2)}`}
-        />
-        <Meter
-          label="RAM"
-          percent={stats.mem.usagePercent}
-          detail={`${formatBytes(stats.mem.usedBytes)} / ${formatBytes(stats.mem.totalBytes)}`}
-        />
-        <Meter
-          label={`Disk ${stats.disk.mount}`}
-          percent={stats.disk.usagePercent}
-          detail={`${formatBytes(stats.disk.usedBytes)} / ${formatBytes(stats.disk.totalBytes)}`}
-        />
-        <Meter
-          label={`OS disk ${stats.rootDisk.mount}`}
-          percent={stats.rootDisk.usagePercent}
-          detail={`${formatBytes(stats.rootDisk.usedBytes)} / ${formatBytes(stats.rootDisk.totalBytes)}`}
-        />
+      <div className="flex items-baseline justify-between gap-2">
+        <h3 className="text-sm font-semibold tracking-tight">{host}</h3>
+        <span className="text-ink-dim font-mono text-[0.6rem] tabular-nums">
+          {stats.net.rxBytesPerSec !== null
+            ? `↓${formatRate(stats.net.rxBytesPerSec)} ↑${formatRate(stats.net.txBytesPerSec)}`
+            : `↓${formatBytes(stats.net.rxBytesTotal)} ↑${formatBytes(stats.net.txBytesTotal)}`}
+        </span>
       </div>
 
-      <dl className="border-line mt-4 flex flex-wrap items-baseline justify-between gap-x-4 border-t pt-3">
-        <dt className="text-ink-dim text-xs font-medium tracking-wide uppercase">Network</dt>
-        <dd className="ml-auto font-mono text-sm tabular-nums">
-          {stats.net.rxBytesPerSec !== null
-            ? `↓ ${formatRate(stats.net.rxBytesPerSec)}  ↑ ${formatRate(stats.net.txBytesPerSec)}`
-            : `↓ ${formatBytes(stats.net.rxBytesTotal)}  ↑ ${formatBytes(stats.net.txBytesTotal)}`}
-        </dd>
-      </dl>
+      <div className="mt-2 space-y-1.5">
+        {rows.map((row) => (
+          <div key={row.label}>
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-ink-dim truncate text-[0.6rem] tracking-wide uppercase">
+                {row.label}
+              </span>
+              <span className="text-ink-dim shrink-0 font-mono text-[0.6rem] tabular-nums">
+                {row.note}
+              </span>
+              <span className="w-9 shrink-0 text-right font-mono text-xs tabular-nums">
+                {Math.round(row.percent)}%
+              </span>
+            </div>
+            <div className="bg-line mt-0.5 h-1 w-full overflow-hidden">
+              <div
+                className="bg-accent h-full"
+                style={{ width: `${Math.min(100, Math.max(0, row.percent))}%` }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
 
-      <p className="text-ink-dim mt-3 font-mono text-xs">updated {formatTime(stats.timestamp)}</p>
+      <p className="text-ink-dim mt-1.5 font-mono text-[0.6rem]">{formatTime(stats.timestamp)}</p>
     </section>
   )
 }
@@ -104,7 +129,7 @@ export function StatsTile({ open, onToggle }: { open: boolean; onToggle: () => v
 
       <span className="flex min-w-0 flex-1 flex-col justify-between overflow-hidden p-1.5">
         {open && state.status === 'ok' ? (
-          <span className="min-h-0 flex-1 space-y-6 overflow-y-auto">
+          <span className="min-h-0 flex-1 space-y-4">
             {state.data.map(([host, stats]) => (
               <HostStatsCard key={host} host={host} stats={stats} />
             ))}
