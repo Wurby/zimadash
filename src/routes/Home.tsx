@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router'
 import type { ActionSummary } from '@shared/types'
-import { itemId, spanFor, type Span } from '@shared/layout'
+import { itemId, overrideSpan, resolveSpan, spanFor, type Span } from '@shared/layout'
 import { tools } from '../tools/registry'
 import { api } from '../lib/api'
 import { usePolled } from '../lib/refresh'
@@ -12,6 +12,7 @@ import { useTheme } from '../lib/theme'
 import { Icon } from '../components/Icon'
 import { ActionButton } from '../components/QuickActions'
 import { StatsTile } from '../components/StatsTile'
+import { SizePicker } from '../components/SizePicker'
 import { useReorder } from '../lib/reorder'
 
 /**
@@ -65,6 +66,8 @@ export function Home() {
   const { theme, toggle } = useTheme()
   const [editing, setEditing] = useState(false)
   const [statsOpen, setStatsOpen] = useState(false)
+  // The tool tile whose size picker is open, if any.
+  const [sizing, setSizing] = useState<string | null>(null)
 
   const actions = usePolled('event-driven', () =>
     api<{ actions: ActionSummary[] }>('/api/actions').then((body) => body.actions),
@@ -81,8 +84,20 @@ export function Home() {
     itemId.edit,
   ]
 
-  const { order, reorder } = useLayout(present)
-  const drag = useReorder(order, reorder, editing)
+  const { order, sizes, reorder, resize } = useLayout(present)
+
+  // A tap in edit mode has nowhere else to go — the drag only arms once the
+  // pointer travels, and the tile's contents are inert — so it opens the size
+  // picker. Only tool tiles have a size worth choosing: actions and the two
+  // system buttons are one unit by definition, and the stats tile sizes itself
+  // from whether it is expanded.
+  const drag = useReorder(order, reorder, editing, (id) => {
+    setSizing((was) => (was === id || !id.startsWith('tool:') ? null : id))
+  })
+
+  function toolFor(id: string) {
+    return tools.find((candidate) => itemId.tool(candidate.meta.slug) === id)
+  }
 
   function spanOf(id: string): Span {
     if (id === itemId.stats) {
@@ -92,8 +107,7 @@ export function Home() {
       return geometry.breakpoint === 'sm' ? [2, 2] : [4, 4]
     }
     if (id.startsWith('tool:')) {
-      const tool = tools.find((candidate) => itemId.tool(candidate.meta.slug) === id)
-      return spanFor(tool?.meta.size, geometry.breakpoint)
+      return resolveSpan(toolFor(id)?.meta.size, sizes[id], geometry.breakpoint)
     }
     return [1, 1]
   }
@@ -126,7 +140,10 @@ export function Home() {
     return (
       <button
         type="button"
-        onClick={() => setEditing((was) => !was)}
+        onClick={() => {
+          setEditing((was) => !was)
+          setSizing(null)
+        }}
         aria-pressed={editing}
         aria-label={editing ? 'Finish arranging' : 'Arrange the dashboard'}
         className={`grid h-full w-full place-items-center border transition-colors ${
@@ -142,7 +159,7 @@ export function Home() {
     <main className="mx-auto max-w-6xl p-4 sm:p-6 lg:p-8">
       {editing && (
         <p className="text-ink-dim mb-3 font-mono text-xs">
-          drag to rearrange · tap the tick when you're done
+          drag to rearrange · tap a tool to resize · tap the tick when you're done
         </p>
       )}
 
@@ -168,7 +185,9 @@ export function Home() {
               // should declare a bigger span rather than bend the layout.
               className={`min-h-0 min-w-0 overflow-hidden ${
                 grabbable ? 'cursor-grab touch-none select-none active:cursor-grabbing' : ''
-              } ${drag.dragging === id ? 'opacity-40' : ''}`}
+              } ${drag.dragging === id ? 'opacity-40' : ''} ${
+                sizing === id ? 'outline-accent outline-2 outline-offset-2' : ''
+              }`}
             >
               {/* While a cell is a drag handle, anything inside that would
                   normally take the tap has to stop taking it. */}
@@ -177,6 +196,20 @@ export function Home() {
           )
         })}
       </div>
+
+      {/* Hidden while something is being dragged — the grid is reflowing under
+          the pointer, and a picker pinned to where its tile used to be is worse
+          than no picker. Unmounting means it re-measures when the drag ends. */}
+      {editing && sizing && !drag.dragging && (
+        <SizePicker
+          item={sizing}
+          unit={geometry.unit}
+          value={overrideSpan(sizes[sizing], geometry.breakpoint)}
+          declared={spanFor(toolFor(sizing)?.meta.size, geometry.breakpoint)}
+          onPick={(span) => resize(sizing, geometry.breakpoint, span)}
+          onClose={() => setSizing(null)}
+        />
+      )}
 
       {tools.length === 0 && (
         <p className="text-ink-dim mt-6 font-mono text-xs">

@@ -46,9 +46,18 @@ inside a tool, which is deliberate, not an omission.
 **The grid is ratios, not pixels.** Column count steps by surface (8 / 12 / 16)
 and the unit is measured to fill the width, so an action is one unit wherever it
 is — about 38px on a phone, about 59px on the wall — and a 3x3 tile is always
-exactly three actions wide. A tool declares its own size per surface in
-`meta.json`; you decide where it sits. Packing is dense, so ordering is the only
-thing stored and a small item drops back into a hole a larger one couldn't fit.
+exactly three actions wide. Packing is dense, so a small item drops back into a
+hole a larger one couldn't fit.
+
+**You own both the size and the position.** A tool declares a size per surface
+in `meta.json`, but that is only where it starts — in edit mode, tapping a tool
+tile opens a picker of sizes beside it and your choice wins from then on. The
+order is one list shared by every device, because dense packing already makes
+the same sequence fill a phone and a wall differently. Sizes are stored **per
+surface**: six columns is three quarters of a phone and barely a third of the
+wall, so a size chosen in your hand would be a postage stamp across the room.
+Setting one surface deliberately leaves the others alone. The picker's reset
+chip hands a tile back to its declared size.
 
 A tapped action swaps its icon for a checkmark for 5 seconds.
 

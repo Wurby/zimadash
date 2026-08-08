@@ -23,8 +23,12 @@ export interface ToolMeta {
   glyph: string
   /**
    * How much of the dashboard grid this tool wants, per surface, as
-   * [columns, rows]. The tool decides its own size; you decide where it sits.
-   * Omit a surface and it falls back down the ladder to a 4x4 square.
+   * [columns, rows]. Omit a surface and it falls back down the ladder to a 4x4
+   * square.
+   *
+   * This is a starting size, not a final one — resizing a tile from the
+   * dashboard stores an override for that surface, and the override wins. Pick
+   * the size the tool reads best at and let the user disagree.
    */
   size?: SizeBySurface
 }

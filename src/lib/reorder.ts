@@ -18,6 +18,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
  *
  * And a drag only begins once the pointer has actually travelled, so a tap is
  * still a tap. Without that, every press on a cell became a drag.
+ *
+ * That surviving tap is what `onTap` reports. A cell in edit mode has its
+ * contents made untappable, so short of this the press had nowhere to go —
+ * which is exactly the gesture the size picker wants.
  */
 
 /** Pointer travel before a press counts as a drag rather than a tap. */
@@ -34,14 +38,15 @@ export function useReorder(
   order: string[],
   onReorder: (next: string[]) => void,
   enabled: boolean,
+  onTap?: (id: string) => void,
 ): Reorder {
   const [dragging, setDragging] = useState<string | null>(null)
 
   // Live values for the pointer handlers, which are bound once per drag and
   // would otherwise close over the order as it was when the drag started.
-  const latest = useRef({ order, onReorder })
+  const latest = useRef({ order, onReorder, onTap })
   useEffect(() => {
-    latest.current = { order, onReorder }
+    latest.current = { order, onReorder, onTap }
   })
 
   const onPointerDown = useCallback((event: React.PointerEvent<HTMLElement>) => {
@@ -89,10 +94,13 @@ export function useReorder(
       save(next)
     }
 
-    function up() {
+    function up(upEvent: PointerEvent) {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
       window.removeEventListener('pointercancel', up)
+      // Never travelled far enough to be a drag, and wasn't cancelled out from
+      // under us — so it was a tap on this cell.
+      if (!active && upEvent.type === 'pointerup') latest.current.onTap?.(id!)
       setDragging(null)
     }
 

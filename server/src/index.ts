@@ -6,8 +6,8 @@ import { handleLogin, handleSetup, handleStatus, initSessionSecret, requireAuth 
 import { handleFireAction, handleListActions } from './actions.js';
 import { createAppShell } from './appShell.js';
 import { serverTools } from './tools/registry.js';
-import { DATA_DIR, ensureDataDir, readJson, writeJson } from './paths.js';
-import type { Layout } from './shared/layout.js';
+import { DATA_DIR, ensureDataDir } from './paths.js';
+import { handleReadLayout, handleWriteLayout } from './layout.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3107;
@@ -65,22 +65,9 @@ app.get('/api/stats/:host', (req, res) => {
 app.get('/api/actions', handleListActions);
 app.post('/api/actions/:id/fire', handleFireAction);
 
-// The dashboard arrangement. One order, shared by every device — sizes already
-// differ per surface, so the same sequence packs differently on each.
-app.get('/api/layout', (_req, res) => {
-  res.json(readJson<Layout>('layout.json') ?? { version: 1, order: [] });
-});
-
-app.put('/api/layout', (req, res) => {
-  const order = req.body?.order as unknown;
-  if (!Array.isArray(order) || order.some((id) => typeof id !== 'string')) {
-    res.status(400).json({ error: 'order must be an array of ids' });
-    return;
-  }
-  const layout: Layout = { version: 1, order: order as string[] };
-  writeJson('layout.json', layout);
-  res.json(layout);
-});
+// The dashboard arrangement: one order shared by every device, sizes per surface.
+app.get('/api/layout', handleReadLayout);
+app.put('/api/layout', handleWriteLayout);
 
 // Each tool owns everything under its own namespace. Adding a tool means adding
 // it to tools/registry.ts — this loop never changes.

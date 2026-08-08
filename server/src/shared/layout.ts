@@ -10,6 +10,8 @@
 
 export type Breakpoint = 'sm' | 'md' | 'lg';
 
+export const BREAKPOINTS: Breakpoint[] = ['sm', 'md', 'lg'];
+
 /** Columns per surface. Below 640 is a phone, below 1024 a portrait tablet. */
 export const COLUMNS: Record<Breakpoint, number> = { sm: 8, md: 12, lg: 16 };
 
@@ -39,6 +41,46 @@ export function spanFor(size: SizeBySurface | undefined, at: Breakpoint): Span {
 }
 
 /**
+ * The sizes a tile can be given from the dashboard, as [wide, tall].
+ *
+ * Deliberately a short closed list rather than a free drag-handle. Every one
+ * fits inside a phone's eight columns, so the same choice is available on every
+ * surface, and a tile can only ever land on a size that was designed for.
+ */
+export const SIZE_OPTIONS: Span[] = [
+  [3, 3],
+  [3, 4],
+  [4, 3],
+  [4, 4],
+  [4, 6],
+  [6, 4],
+  [6, 6],
+];
+
+/**
+ * What a tile is actually sized at: your choice if you made one on *this*
+ * surface, otherwise what the tool asked for.
+ *
+ * An override deliberately does **not** fall down the ladder the way a declared
+ * size does. Six columns is three quarters of a phone and barely a third of the
+ * wall display, so a size chosen in your hand would be a postage stamp across
+ * the room. Setting one surface leaves the others alone until you set them too.
+ */
+export function resolveSpan(
+  declared: SizeBySurface | undefined,
+  override: SizeBySurface | undefined,
+  at: Breakpoint,
+): Span {
+  return overrideSpan(override, at) ?? spanFor(declared, at);
+}
+
+/** The size chosen for this surface, or null while the tool's own still holds. */
+export function overrideSpan(override: SizeBySurface | undefined, at: Breakpoint): Span | null {
+  const raw = override?.[at];
+  return raw && raw.length === 2 ? [raw[0], raw[1]] : null;
+}
+
+/**
  * Item ids are prefixed by kind so the stored order can hold tools, actions and
  * fixtures in one list without them colliding.
  */
@@ -55,6 +97,12 @@ export interface Layout {
   /** Ids in display order. Anything absent is appended, so a newly added tool
    *  shows up rather than vanishing. */
   order: string[];
+  /**
+   * Sizes you have chosen, by item id, per surface. Absent means the tool's
+   * declared size still stands — which is why this is sparse rather than a full
+   * table: it records only what you actually overrode.
+   */
+  sizes?: Record<string, SizeBySurface>;
 }
 
 /**
