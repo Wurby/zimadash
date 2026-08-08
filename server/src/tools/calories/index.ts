@@ -3,13 +3,20 @@ import type { ServerTool } from '../registry.js';
 import type { DaySummary, Entry, Settings } from '../../shared/calories.js';
 import { RANGE_DAYS, type RangeKey } from '../../shared/calories.js';
 import { readSettings, writeSettings, trackedFields } from './settings.js';
-import { refineEstimate, startEstimate, startImageEstimate, takeThread } from './brain.js';
+import {
+  reestimateEntry,
+  refineEstimate,
+  startEstimate,
+  startImageEstimate,
+  takeThread,
+} from './brain.js';
 import {
   addEntry,
   dayKeyFor,
   deleteEntry,
   entriesForDay,
   entriesInRange,
+  findEntry,
   patchEntry,
   recentEntries,
   shiftDayKey,
@@ -223,6 +230,30 @@ router.post('/entries', (req, res) => {
       values: clean,
     }),
   );
+});
+
+/**
+ * Correct a logged meal by describing what was wrong. Returns a pending estimate
+ * that refines through the ordinary route; approving it PATCHes this entry.
+ */
+router.post('/entries/:id/reestimate', async (req, res) => {
+  const feedback = typeof req.body?.feedback === 'string' ? req.body.feedback.trim() : '';
+  if (!feedback) {
+    res.status(400).json({ error: 'say what was wrong with it' });
+    return;
+  }
+
+  const entry = findEntry(req.params.id);
+  if (!entry) {
+    res.status(404).json({ error: 'no such entry' });
+    return;
+  }
+
+  try {
+    res.json(await reestimateEntry(entry.description, entry.values, feedback));
+  } catch (err) {
+    res.status(503).json({ error: err instanceof Error ? err.message : 'estimate failed' });
+  }
 });
 
 router.patch('/entries/:id', (req, res) => {

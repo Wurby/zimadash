@@ -65,6 +65,12 @@ export const commitEstimate = (pendingId: string, values: Record<string, number>
 export const logDirect = (description: string, values: Record<string, number>) =>
   api<Entry>(`${BASE}/entries`, { method: 'POST', body: JSON.stringify({ description, values }) })
 
+export const reestimateEntry = (id: string, feedback: string) =>
+  api<PendingEstimate>(`${BASE}/entries/${id}/reestimate`, {
+    method: 'POST',
+    body: JSON.stringify({ feedback }),
+  })
+
 export const patchEntry = (id: string, values: Record<string, number>) =>
   api<Entry>(`${BASE}/entries/${id}`, { method: 'PATCH', body: JSON.stringify({ values }) })
 

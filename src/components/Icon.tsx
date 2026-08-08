@@ -25,6 +25,12 @@ const paths: Record<string, ReactNode> = {
     </>
   ),
   chevron: <path d="M6 9l6 6 6-6" />,
+  sparkle: (
+    <>
+      <path d="M11 3.5l1.7 4.3 4.3 1.7-4.3 1.7L11 15.5l-1.7-4.3L5 9.5l4.3-1.7z" />
+      <path d="M17.5 14.5l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9z" />
+    </>
+  ),
   camera: (
     <>
       <path d="M3 8.5h3.5L8 6.5h8l1.5 2H21v11H3z" />

@@ -31,6 +31,18 @@ export interface Composition {
   accounted: number
 }
 
+/**
+ * What the macros alone come to, in kcal.
+ *
+ * Offered as a suggestion, never enforced. Calories stay stored rather than
+ * derived because alcohol is 7 kcal/g and isn't a tracked macro, because a bare
+ * number typed straight in has no macros at all, and because a printed label
+ * beats Atwater factors applied to rounded grams.
+ */
+export function derivedCalories(values: Record<string, number>): number {
+  return composition(values, {}).accounted
+}
+
 export function composition(
   totals: Record<string, number>,
   colors: Record<string, string>,

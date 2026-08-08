@@ -223,6 +223,27 @@ export async function startImageEstimate(base64: string): Promise<PendingEstimat
   }
 }
 
+/**
+ * Re-estimate a meal that's already been logged.
+ *
+ * Seeds a normal thread from what was recorded, so everything downstream — the
+ * refinement rounds, the expiry, the memory-only lifetime — behaves exactly as
+ * it does for a fresh estimate. The difference is only what happens on approval:
+ * this updates the entry rather than creating one.
+ */
+export async function reestimateEntry(
+  description: string,
+  values: Record<string, number>,
+  feedback: string,
+): Promise<PendingEstimate> {
+  const transcript = [
+    `Meal: ${description || 'a previously logged meal'}`,
+    `It was recorded as: ${JSON.stringify(values)}`,
+    `Correction from the person who ate it: ${feedback}`,
+  ];
+  return remember(description, transcript, await estimate(transcript));
+}
+
 export async function refineEstimate(
   id: string,
   feedback: string,

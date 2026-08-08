@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import type { FieldConfig, PendingEstimate, Settings } from '@shared/calories'
 import { Icon } from '../../components/Icon'
 import { usePolled } from '../../lib/refresh'
+import { derivedCalories } from './macros'
 import { shrink } from './photo'
 import {
   commitEstimate,
@@ -95,6 +96,13 @@ function PendingCard({
   const [feedback, setFeedback] = useState('')
   const correcting = feedback.trim().length > 0
 
+  // Offered when hand-editing has pulled the calorie figure away from what the
+  // macros account for. Never applied on its own — alcohol and printed labels
+  // are both legitimate reasons for the two to differ.
+  const fromMacros = Math.round(derivedCalories(pending.values))
+  const suggestion =
+    fromMacros > 0 && Math.abs(fromMacros - (pending.values.calories ?? 0)) > 15 ? fromMacros : null
+
   return (
     <div className="border-accent bg-surface border p-4">
       <p className="text-sm font-semibold tracking-tight">{pending.description}</p>
@@ -129,6 +137,19 @@ function PendingCard({
           </label>
         ))}
       </div>
+
+      {suggestion !== null && (
+        <p className="text-ink-dim mt-3 flex items-center gap-2 font-mono text-xs">
+          macros come to {suggestion} kcal
+          <button
+            type="button"
+            onClick={() => onValues({ ...pending.values, calories: suggestion })}
+            className="border-line hover:border-accent text-ink border px-2 py-0.5"
+          >
+            use it
+          </button>
+        </p>
+      )}
 
       <div className="mt-4 flex gap-2">
         <input

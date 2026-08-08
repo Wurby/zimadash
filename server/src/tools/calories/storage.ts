@@ -89,6 +89,10 @@ export function addEntry(input: Omit<Entry, 'id'>): Entry {
   return entry;
 }
 
+export function findEntry(id: string): Entry | null {
+  return readMonth(monthOfId(id)).entries.find((entry) => entry.id === id) ?? null;
+}
+
 export function patchEntry(id: string, values: Record<string, number>): Entry | null {
   const month = monthOfId(id);
   const file = readMonth(month);
