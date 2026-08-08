@@ -7,14 +7,10 @@ import { NotFound } from './NotFound'
 /**
  * The frame around every tool: a back arrow and a title, then the tool.
  *
- * There is no global header any more, so this bar is the only way out — which
- * means it has to stay put. A tool's Reports or Log runs well past a screen,
- * and an arrow that scrolls off the top strands you at the bottom of a long
- * page with nothing to press.
- *
- * It sticks below `--safe-top` rather than at 0. Sticky positions against the
- * viewport, so on a notched phone `top: 0` would park it under the island — the
- * page's own padding doesn't help once an element has left the flow.
+ * There is no global header, so this is the only way out — a tool installed as
+ * its own PWA still needs one. It scrolls with the page by choice: pinning it
+ * was tried and read as chrome creeping back in, and the arrow is where you
+ * expect it when you arrive.
  */
 export function ToolShell() {
   const { slug } = useParams()
@@ -27,19 +23,19 @@ export function ToolShell() {
   const { meta, View } = tool
 
   return (
-    <main className="mx-auto max-w-6xl px-4 pb-8 sm:px-6 lg:px-8">
-      <div className="bg-bg/85 sticky top-[var(--safe-top)] z-30 -mx-4 flex items-center gap-3 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+    <main className="mx-auto max-w-6xl p-4 sm:p-6 lg:p-8">
+      <div className="flex items-center gap-3">
         <Link
           to="/"
           aria-label="Back to the dashboard"
-          className="border-line bg-surface hover:border-accent grid size-10 shrink-0 place-items-center border transition-colors"
+          className="border-line hover:border-accent border p-1.5 transition-colors"
         >
           <Icon name="back" />
         </Link>
-        <h1 className="truncate text-xl font-semibold tracking-tight">{meta.name}</h1>
+        <h1 className="text-xl font-semibold tracking-tight">{meta.name}</h1>
       </div>
 
-      <div className="mt-4">
+      <div className="mt-6">
         <View />
       </div>
     </main>
