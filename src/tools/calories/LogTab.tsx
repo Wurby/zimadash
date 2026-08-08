@@ -21,9 +21,24 @@ function Row({
   onChanged: () => void
 }) {
   const [editing, setEditing] = useState(false)
-  const [values, setValues] = useState(entry.values)
+  // Held as strings while editing, not numbers. A controlled number input that
+  // coerces with Number() turns an emptied box into 0, so deleting "23" to
+  // retype leaves a stubborn zero and you end up with "033".
+  const [draft, setDraft] = useState<Record<string, string>>({})
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
+
+  function startEdit() {
+    setDraft(
+      Object.fromEntries(
+        fields.map((field) => [
+          field.id,
+          entry.values[field.id] === undefined ? '' : String(entry.values[field.id]),
+        ]),
+      ),
+    )
+    setEditing(true)
+  }
 
   const when = new Date(entry.at).toLocaleString([], {
     weekday: 'short',
@@ -32,6 +47,14 @@ function Row({
   })
 
   async function save() {
+    // An emptied box means "no value for this field", not zero — so it is
+    // dropped rather than written as a 0 you never entered.
+    const values = Object.fromEntries(
+      Object.entries(draft)
+        .filter(([, raw]) => raw.trim() !== '' && Number.isFinite(Number(raw)))
+        .map(([id, raw]) => [id, Number(raw)]),
+    )
+
     setBusy(true)
     try {
       await patchEntry(entry.id, values)
@@ -68,18 +91,23 @@ function Row({
       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
         {fields.map((field) =>
           editing ? (
+            // The label stays while editing — a row of coloured boxes with no
+            // words is a guessing game, and a narrower input leaves room for it.
             <label key={field.id} className="flex items-center gap-1.5">
               <span
                 aria-hidden="true"
                 className="size-2 shrink-0"
                 style={{ background: field.color }}
               />
+              <span className="text-ink-dim text-[0.65rem] tracking-wide uppercase">
+                {field.label}
+              </span>
               <input
-                type="number"
+                type="text"
                 inputMode="decimal"
-                value={values[field.id] ?? 0}
-                onChange={(e) => setValues({ ...values, [field.id]: Number(e.target.value) })}
-                className="border-line focus:border-accent w-20 border bg-transparent px-1.5 py-1 font-mono text-xs outline-none"
+                value={draft[field.id] ?? ''}
+                onChange={(e) => setDraft({ ...draft, [field.id]: e.target.value })}
+                className="border-line focus:border-accent w-14 border bg-transparent px-1.5 py-1 font-mono text-xs outline-none"
               />
             </label>
           ) : entry.values[field.id] === undefined ? null : (
@@ -114,10 +142,7 @@ function Row({
             </button>
             <button
               type="button"
-              onClick={() => {
-                setValues(entry.values)
-                setEditing(false)
-              }}
+              onClick={() => setEditing(false)}
               className="border-line hover:border-accent border px-3 py-1.5 text-xs"
             >
               Cancel
@@ -126,7 +151,7 @@ function Row({
         ) : (
           <button
             type="button"
-            onClick={() => setEditing(true)}
+            onClick={startEdit}
             className="border-line hover:border-accent border px-3 py-1.5 text-xs"
           >
             Edit

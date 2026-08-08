@@ -93,6 +93,7 @@ function PendingCard({
   onDiscard: () => void
 }) {
   const [feedback, setFeedback] = useState('')
+  const correcting = feedback.trim().length > 0
 
   return (
     <div className="border-accent bg-surface border p-4">
@@ -112,12 +113,16 @@ function PendingCard({
               />
               {field.label}
             </span>
+            {/* Uncontrolled, and remounted per refinement round via the key, so
+                the box can be emptied to retype. A controlled value coerced
+                through Number() puts a 0 back the moment you clear it. */}
             <input
-              type="number"
+              key={`${field.id}-${pending.rounds}`}
+              type="text"
               inputMode="decimal"
-              value={pending.values[field.id] ?? 0}
+              defaultValue={pending.values[field.id] ?? ''}
               onChange={(event) =>
-                onValues({ ...pending.values, [field.id]: Number(event.target.value) })
+                onValues({ ...pending.values, [field.id]: Number(event.target.value) || 0 })
               }
               className="border-line focus:border-accent mt-1 w-full border bg-transparent px-2 py-1.5 font-mono text-sm outline-none"
             />
@@ -142,13 +147,16 @@ function PendingCard({
       </div>
 
       <div className="mt-3 flex gap-2">
+        {/* An unsent correction locks logging. Otherwise the obvious big button
+            sits right under the box you just typed in, and one thumb-tap saves
+            the old numbers and throws the correction away. */}
         <button
           type="button"
           onClick={onSave}
-          disabled={busy}
+          disabled={busy || correcting}
           className="bg-accent grow px-4 py-2.5 text-sm font-medium text-slate-50 disabled:opacity-50 dark:text-slate-900"
         >
-          {busy ? 'working…' : 'Log it'}
+          {busy ? 'working…' : correcting ? 'Send your change first' : 'Log it'}
         </button>
         <button
           type="button"
