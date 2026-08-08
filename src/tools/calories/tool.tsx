@@ -3,12 +3,14 @@ import type { Settings } from '@shared/calories'
 import { usePolled } from '../../lib/refresh'
 import { defineTool } from '../types'
 import meta from './meta.json'
-import { getDay, getSettings, tracked } from './api'
+import { getDay, getSettings, getWeight, tracked, withEffectiveGoal } from './api'
 import { CaloriesBar } from './CaloriesBar'
 import { MainTab } from './MainTab'
 import { ReportsTab } from './ReportsTab'
 import { LogTab } from './LogTab'
 import { SettingsTab } from './SettingsTab'
+import { WeightTab } from './WeightTab'
+import { WeightBar } from './WeightBar'
 
 /**
  * Calories — what you ate, and what it cost.
@@ -19,12 +21,13 @@ import { SettingsTab } from './SettingsTab'
  * estimate, which the input is built around.
  */
 
-const TABS = ['Today', 'Reports', 'Log', 'Settings'] as const
+const TABS = ['Today', 'Weight', 'Reports', 'Log', 'Settings'] as const
 type Tab = (typeof TABS)[number]
 
 function Tile() {
   const settings = usePolled('event-driven', getSettings)
   const day = usePolled('event-driven', getDay)
+  const weight = usePolled('event-driven', getWeight)
 
   if (day.status === 'loading' || settings.status === 'loading') {
     return <p className="text-ink-dim text-sm">loading…</p>
@@ -32,7 +35,9 @@ function Tile() {
   if (day.status === 'error') return <p className="text-danger text-sm">{day.message}</p>
   if (settings.status !== 'ok') return null
 
-  const fields = tracked(settings.data)
+  const expenditure = weight.status === 'ok' ? weight.data.expenditure : null
+  const fields = withEffectiveGoal(tracked(settings.data), settings.data, expenditure)
+  const showWeight = settings.data.weight.onTile && expenditure?.trendLb !== null
   // Calories always leads the tile — it is the summary, not one of the numbers,
   // so it isn't subject to the tile checkboxes the way the others are.
   const rest = fields.filter((field) => field.onTile && field.id !== 'calories')
@@ -68,13 +73,23 @@ function Tile() {
         </div>
       )}
 
-      <p className="text-ink-dim mt-auto pt-3 text-xs">
-        {latest ? (
-          <span className="line-clamp-2">{latest.description || 'quick entry'}</span>
+      <div className="mt-auto pt-3">
+        {showWeight && expenditure ? (
+          <WeightBar
+            settings={settings.data.weight}
+            expenditure={expenditure}
+            startLb={weight.status === 'ok' ? (weight.data.trend[0]?.lb ?? null) : null}
+          />
         ) : (
-          <span className="italic">Nothing logged today.</span>
+          <p className="text-ink-dim text-xs">
+            {latest ? (
+              <span className="line-clamp-2">{latest.description || 'quick entry'}</span>
+            ) : (
+              <span className="italic">Nothing logged today.</span>
+            )}
+          </p>
         )}
-      </p>
+      </div>
     </div>
   )
 }
@@ -107,6 +122,7 @@ function View() {
 
       <div className="mt-6">
         {tab === 'Today' && <MainTab settings={settings} />}
+        {tab === 'Weight' && <WeightTab settings={settings} onSaved={setOverride} />}
         {tab === 'Reports' && <ReportsTab settings={settings} />}
         {tab === 'Log' && <LogTab settings={settings} />}
         {tab === 'Settings' && <SettingsTab settings={settings} onSaved={setOverride} />}

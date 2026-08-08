@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import type { FieldConfig, Settings } from '@shared/calories'
 import { SWATCHES } from '@shared/calories'
-import { putSettings } from './api'
+import { getWeight, putSettings } from './api'
+import { usePolled } from '../../lib/refresh'
 
 /**
  * What gets tracked, what it's called, what colour it is, and what you're
@@ -153,6 +154,8 @@ export function SettingsTab({
   const [draft, setDraft] = useState<Settings | null>(settings)
   const [busy, setBusy] = useState(false)
   const [newLabel, setNewLabel] = useState('')
+  // Above the early return: hooks can't sit behind a conditional.
+  const weight = usePolled('event-driven', getWeight)
 
   const current = draft ?? settings
   if (!current) return <p className="text-ink-dim text-sm">loading…</p>
@@ -197,8 +200,66 @@ export function SettingsTab({
     setNewLabel('')
   }
 
+  const computed = weight.status === 'ok' ? weight.data.expenditure : null
+  const manualGoal = current.fields.find((field) => field.id === 'calories')?.goal ?? null
+  const useComputed = current.weight.useComputedTarget
+
   return (
     <div className="space-y-4">
+      {/* Both numbers sit beside the switch, because choosing between them
+          blind means trusting one you have never met. */}
+      <div className="border-line bg-surface border p-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-ink-dim text-[0.65rem] font-medium tracking-wide uppercase">
+            Calorie target
+          </span>
+          <div className="ml-auto flex gap-1">
+            {(
+              [
+                ['Set by hand', false, manualGoal],
+                ['Learned', true, computed?.target ?? null],
+              ] as const
+            ).map(([label, value, number]) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() =>
+                  update({ ...current, weight: { ...current.weight, useComputedTarget: value } })
+                }
+                aria-pressed={useComputed === value}
+                disabled={value && computed?.status !== 'ready'}
+                className={`border px-3 py-1.5 text-xs disabled:opacity-40 ${
+                  useComputed === value
+                    ? 'border-accent text-accent'
+                    : 'border-line hover:border-accent'
+                }`}
+              >
+                {label}
+                <span className="ml-1.5 font-mono tabular-nums">{number ?? '—'}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        {computed?.status !== 'ready' && (
+          <p className="text-ink-dim mt-2 text-xs">
+            The learned target needs {computed?.daysNeeded ?? 7} more day
+            {computed?.daysNeeded === 1 ? '' : 's'} of food and weigh-ins before it can be used.
+          </p>
+        )}
+      </div>
+
+      <label className="border-line bg-surface flex cursor-pointer items-center gap-2 border p-3 text-xs">
+        <input
+          type="checkbox"
+          checked={current.weight.onTile}
+          onChange={(event) =>
+            update({ ...current, weight: { ...current.weight, onTile: event.target.checked } })
+          }
+          className="accent-accent size-4"
+        />
+        <span className="text-ink-dim tracking-wide uppercase">Weight bar on the tile</span>
+      </label>
+
       <ul className="space-y-2">
         {current.fields.map((field) => (
           <FieldRow

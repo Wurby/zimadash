@@ -26,9 +26,21 @@ const CORE_DEFAULTS: Array<Pick<FieldConfig, 'id' | 'label' | 'unit' | 'color'>>
   { id: 'fibre', label: 'Fibre', unit: 'g', color: '#23a12f' },
 ];
 
+const WEIGHT_DEFAULTS: Settings['weight'] = {
+  goalLb: null,
+  rateLbPerWeek: 1,
+  // Off until there is a goal and enough data — the computed target would have
+  // nothing to say, and silently replacing a hand-set goal with a guess is
+  // worse than leaving it alone.
+  useComputedTarget: false,
+  onTile: true,
+  baselineDate: null,
+};
+
 function defaults(): Settings {
   return {
     version: VERSION,
+    weight: { ...WEIGHT_DEFAULTS },
     fields: CORE_DEFAULTS.map((field) => ({
       ...field,
       core: true,
@@ -52,7 +64,13 @@ function migrate(raw: unknown): Settings {
   const merged = defaults().fields.map((base) => ({ ...base, ...byId.get(base.id), core: true }));
   const custom = stored.fields.filter((field) => !CORE_FIELDS.includes(field.id as never));
 
-  return { version: VERSION, fields: [...merged, ...custom.map((f) => ({ ...f, core: false }))] };
+  return {
+    version: VERSION,
+    // Spread over the defaults so a file written before weight existed gains
+    // the block rather than arriving with it undefined.
+    weight: { ...WEIGHT_DEFAULTS, ...stored.weight },
+    fields: [...merged, ...custom.map((f) => ({ ...f, core: false }))],
+  };
 }
 
 export function readSettings(): Settings {

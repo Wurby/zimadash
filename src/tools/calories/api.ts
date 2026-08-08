@@ -2,10 +2,12 @@ import { api } from '../../lib/api'
 import type {
   DaySummary,
   Entry,
+  Expenditure,
   FieldConfig,
   PendingEstimate,
   RangeKey,
   Settings,
+  WeightReading,
 } from '@shared/calories'
 
 /** Every call this tool makes. Nothing else reaches outside the folder. */
@@ -34,6 +36,43 @@ export const putSettings = (settings: Settings) =>
   api<Settings>(`${BASE}/settings`, { method: 'PUT', body: JSON.stringify(settings) })
 
 export const getDay = () => api<DaySummary>(`${BASE}/day`)
+
+export interface WeightData {
+  readings: WeightReading[]
+  trend: WeightReading[]
+  expenditure: Expenditure
+}
+
+export const getWeight = () => api<WeightData>(`${BASE}/weight`)
+
+export const putWeight = (date: string, lb: number) =>
+  api<{ readings: WeightReading[] }>(`${BASE}/weight/${date}`, {
+    method: 'PUT',
+    body: JSON.stringify({ lb }),
+  })
+
+export const deleteWeight = (date: string) =>
+  api<{ readings: WeightReading[] }>(`${BASE}/weight/${date}`, { method: 'DELETE' })
+
+export const resetBaseline = () => api<Settings>(`${BASE}/weight/baseline`, { method: 'POST' })
+
+/**
+ * The calorie goal actually in force.
+ *
+ * When the computed target is switched on and the tool has learned enough, it
+ * replaces the hand-set goal — everything downstream reads `field.goal`, so
+ * substituting it here means the bar, the stat rows and the graph's reference
+ * line all follow without knowing anything about weight.
+ */
+export function withEffectiveGoal(
+  fields: FieldConfig[],
+  settings: Settings | null,
+  expenditure: Expenditure | null,
+): FieldConfig[] {
+  const target = expenditure?.target
+  if (!settings?.weight.useComputedTarget || typeof target !== 'number') return fields
+  return fields.map((field) => (field.id === 'calories' ? { ...field, goal: target } : field))
+}
 
 export const getRange = (range: RangeKey) => api<RangeData>(`${BASE}/range/${range}`)
 

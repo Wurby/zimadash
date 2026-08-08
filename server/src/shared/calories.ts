@@ -73,6 +73,7 @@ export interface FieldConfig {
 export interface Settings {
   version: number;
   fields: FieldConfig[];
+  weight: WeightSettings;
 }
 
 /** A logged meal. Values are keyed by field id; a missing key means unknown. */
@@ -106,6 +107,52 @@ export interface DaySummary {
   date: string;
   totals: Record<string, number>;
   entries: Entry[];
+}
+
+// ─── Weight and the adaptive target ──────────────────────────────────────────
+
+export type LossRate = 1 | 1.5 | 2;
+
+export interface WeightSettings {
+  /** Pounds. Null until you set one. */
+  goalLb: number | null;
+  rateLbPerWeek: LossRate;
+  /** Use the learned target instead of the hand-set calorie goal. */
+  useComputedTarget: boolean;
+  /** Show the weight bar on the homepage tile. */
+  onTile: boolean;
+  /**
+   * Everything before this date is ignored by the expenditure maths — and only
+   * by that. Nothing is deleted; the graphs still show the full span.
+   */
+  baselineDate: string | null;
+}
+
+/** One morning's weigh-in. At most one per day; a later reading replaces it. */
+export interface WeightReading {
+  date: string;
+  lb: number;
+}
+
+/** What the tool has worked out. Absent fields mean it isn't sure yet. */
+export interface Expenditure {
+  status: 'learning' | 'ready';
+  /** How many more days of paired food-and-weight data it wants. */
+  daysNeeded: number;
+  /** kcal burned per day, from actual intake against actual trend movement. */
+  tdee: number | null;
+  /** kcal to eat per day to move at the chosen rate. */
+  target: number | null;
+  /** Smoothed weight, not this morning's number. */
+  trendLb: number | null;
+  /** Pounds per week; negative is losing. */
+  ratePerWeek: number | null;
+  /** True once the trend has reached the goal — the target holds steady. */
+  atGoal: boolean;
+  /** When the goal would arrive at the current rate. */
+  projectedDate: string | null;
+  /** Days dropped as under-logged, so the number isn't silently wrong. */
+  excluded: number;
 }
 
 export type RangeKey = 'week' | 'fortnight' | 'month' | 'quarter' | 'half' | 'year';

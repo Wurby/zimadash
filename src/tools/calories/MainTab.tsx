@@ -10,10 +10,12 @@ import {
   getDay,
   getRange,
   getRecent,
+  getWeight,
   logDirect,
   refineEstimate,
   startEstimate,
   tracked,
+  withEffectiveGoal,
 } from './api'
 import { CaloriesBar } from './CaloriesBar'
 import { Chart, type Point } from './Chart'
@@ -193,7 +195,14 @@ function PendingCard({
 }
 
 export function MainTab({ settings }: { settings: Settings | null }) {
-  const fields = tracked(settings)
+  const weight = usePolled('event-driven', getWeight)
+  // When the computed target is on, it stands in for the hand-set calorie goal
+  // everywhere below without any of this knowing about weight.
+  const fields = withEffectiveGoal(
+    tracked(settings),
+    settings,
+    weight.status === 'ok' ? weight.data.expenditure : null,
+  )
   const day = usePolled('event-driven', getDay)
   const recent = usePolled('event-driven', () => getRecent().then((r) => r.meals))
   const promoted = usePolled('event-driven', () => getRange('fortnight'))

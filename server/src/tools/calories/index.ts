@@ -3,6 +3,8 @@ import type { ServerTool } from '../registry.js';
 import type { DaySummary, Entry, Settings } from '../../shared/calories.js';
 import { RANGE_DAYS, type RangeKey } from '../../shared/calories.js';
 import { readSettings, writeSettings, trackedFields } from './settings.js';
+import { allReadings, deleteReading, putReading } from './weight.js';
+import { computeExpenditure, trendSeries } from './expenditure.js';
 import {
   reestimateEntry,
   refineEstimate,
@@ -113,6 +115,62 @@ router.get('/recent', (_req, res) => {
     .map(({ description, values }) => ({ description, values }));
 
   res.json({ meals });
+});
+
+// ─── Weight ──────────────────────────────────────────────────────────────────
+
+/** Readings, the smoothed trend, and what the tool has learned from them. */
+router.get('/weight', (_req, res) => {
+  const today = dayKeyFor(Date.now());
+  const readings = allReadings();
+  const settings = readSettings();
+
+  // Intake per day across the whole span, so the expenditure maths can pair
+  // each weigh-in with what was eaten that day.
+  const intakeByDay = new Map<string, number>();
+  if (readings.length > 0) {
+    for (const entry of entriesInRange(readings[0].date, today)) {
+      const day = dayKeyFor(entry.at);
+      intakeByDay.set(day, (intakeByDay.get(day) ?? 0) + (entry.values.calories ?? 0));
+    }
+  }
+
+  res.json({
+    readings,
+    trend: trendSeries(readings),
+    expenditure: computeExpenditure(intakeByDay, readings, settings.weight, today),
+  });
+});
+
+router.put('/weight/:date', (req, res) => {
+  const lb = Number(req.body?.lb);
+  if (!Number.isFinite(lb) || lb <= 0 || lb > 2000) {
+    res.status(400).json({ error: 'that is not a weight' });
+    return;
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(req.params.date)) {
+    res.status(400).json({ error: 'bad date' });
+    return;
+  }
+  res.json({ readings: putReading(req.params.date, Math.round(lb * 10) / 10) });
+});
+
+router.delete('/weight/:date', (req, res) => {
+  res.json({ readings: deleteReading(req.params.date) });
+});
+
+/**
+ * Draw a line under everything so far. Non-destructive on purpose: it records a
+ * date the maths starts from, and deletes nothing.
+ */
+router.post('/weight/baseline', (_req, res) => {
+  const settings = readSettings();
+  res.json(
+    writeSettings({
+      ...settings,
+      weight: { ...settings.weight, baselineDate: dayKeyFor(Date.now()) },
+    }),
+  );
 });
 
 // ─── Estimating ──────────────────────────────────────────────────────────────
