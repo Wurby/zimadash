@@ -144,21 +144,30 @@ export function Home() {
       )}
 
       <div ref={ref} style={gridStyle(geometry)}>
-        {order.map((id) => (
-          <div
-            key={id}
-            data-item={id}
-            style={itemStyle(spanOf(id), geometry)}
-            {...drag.handlers(id)}
-            className={`min-w-0 ${
-              editing ? 'cursor-grab touch-none select-none active:cursor-grabbing' : ''
-            } ${drag.dragging === id ? 'opacity-40' : ''}`}
-          >
-            {/* In edit mode the whole cell is a drag handle, so anything inside
-                that would normally take the tap has to stop taking it. */}
-            <div className={`h-full ${editing ? 'pointer-events-none' : ''}`}>{render(id)}</div>
-          </div>
-        ))}
+        {order.map((id) => {
+          // The edit button is never draggable. It is the only way out of edit
+          // mode, and a cell that is a drag handle has its contents made
+          // untappable — which would leave you stuck in here with nothing to
+          // press. It can still be moved around like anything else once you
+          // are done.
+          const grabbable = editing && id !== itemId.edit
+
+          return (
+            <div
+              key={id}
+              data-item={id}
+              style={itemStyle(spanOf(id), geometry)}
+              {...(id === itemId.edit ? {} : drag.handlers(id))}
+              className={`min-w-0 ${
+                grabbable ? 'cursor-grab touch-none select-none active:cursor-grabbing' : ''
+              } ${drag.dragging === id ? 'opacity-40' : ''}`}
+            >
+              {/* While a cell is a drag handle, anything inside that would
+                  normally take the tap has to stop taking it. */}
+              <div className={`h-full ${grabbable ? 'pointer-events-none' : ''}`}>{render(id)}</div>
+            </div>
+          )
+        })}
       </div>
 
       {tools.length === 0 && (

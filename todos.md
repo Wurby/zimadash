@@ -35,6 +35,41 @@ dashboard has more on it.
 
 ---
 
+## Phase 6 — Homebridge
+
+A tool tile for the house. Needs a grill-me before building — the questions
+below are the ones that would change the shape of it, not details.
+
+**What already exists to build on.** `server/src/actions.ts` proxies a
+configured HTTP request from the server so a credential never reaches the
+browser, and `actions.json` in `DATA_DIR` is where such a credential would live.
+Firing a Homebridge scene is already possible today as a 1x1 quick action with
+no new code — the someday item about writing a real `actions.json` covers that.
+So this phase is only worth doing for what a quick action _can't_ do.
+
+**The fork that decides everything.** Does the tile only _fire_ things, or does
+it _show state_ — which lights are on, what the thermostat reads, whether a door
+is open? Firing is what already exists. Showing state means polling Homebridge
+on a tier, holding a view of the house, and handling the case where the bridge
+is unreachable. Those are different tools.
+
+**Other questions to settle first:**
+
+- [ ] How it talks to Homebridge. Its UI exposes an HTTP API behind a token,
+      which is straightforward; speaking HomeKit directly is not. Whichever it
+      is, the token belongs in `DATA_DIR` and the browser never sees it
+- [ ] Which accessories appear, and whether that's a fixed list you configure or
+      everything the bridge reports
+- [ ] Refresh tier. State that's shown has to be polled — probably `ambient`,
+      but a light you just toggled needs to look right immediately, which
+      argues for a refetch after mutating rather than waiting for a tick
+- [ ] What it looks like at tile size versus opened, given the wall display is
+      the surface most likely to want it
+- [ ] What happens when the bridge is down — a stale view is worse than an
+      honest one for something that controls the house
+
+---
+
 ## Someday / maybe
 
 - [ ] Apple Health integration for the calorie tracker

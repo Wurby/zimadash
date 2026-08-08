@@ -5,12 +5,23 @@ import { useCallback, useEffect, useRef, useState } from 'react'
  *
  * Pointer events rather than HTML5 drag-and-drop, which doesn't exist on touch.
  * The dragged item is found by hit-testing the pointer against the other cells'
- * rectangles, so it doesn't matter that your finger is on top of the thing you
- * are moving — the cell underneath is what counts.
+ * rectangles, so it doesn't matter that your finger covers the thing you are
+ * moving — the cell underneath is what counts.
  *
- * The order updates live as you cross a boundary, so the grid reflows under
- * your finger and you can see where it will land. Each landing saves.
+ * Two things stop it fighting itself:
+ *
+ * A swap reflows the grid instantly, which puts the displaced item directly
+ * under the pointer — and swapping again on the very next move would put it
+ * straight back. That oscillation reads as "this item won't go past that one".
+ * So after a swap the same target is ignored until the pointer reaches a
+ * different cell.
+ *
+ * And a drag only begins once the pointer has actually travelled, so a tap is
+ * still a tap. Without that, every press on a cell became a drag.
  */
+
+/** Pointer travel before a press counts as a drag rather than a tap. */
+const THRESHOLD = 6
 
 export interface Reorder {
   dragging: string | null
@@ -36,14 +47,13 @@ export function useReorder(
   const onPointerDown = useCallback((event: React.PointerEvent<HTMLElement>) => {
     const cell = event.currentTarget
     const id = cell.dataset.item
-    if (!id) return
-
-    event.preventDefault()
-    cell.setPointerCapture(event.pointerId)
-    setDragging(id)
-
     const grid = cell.parentElement
-    if (!grid) return
+    if (!id || !grid) return
+
+    const startX = event.clientX
+    const startY = event.clientY
+    let active = false
+    let lastTarget: string | null = null
 
     function cellUnder(x: number, y: number): string | null {
       for (const candidate of grid!.children) {
@@ -58,8 +68,15 @@ export function useReorder(
     }
 
     function move(moveEvent: PointerEvent) {
+      if (!active) {
+        if (Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) < THRESHOLD) return
+        active = true
+        setDragging(id!)
+      }
+
       const over = cellUnder(moveEvent.clientX, moveEvent.clientY)
-      if (!over) return
+      // Nothing under the pointer, or still over the item we just displaced.
+      if (!over || over === lastTarget) return
 
       const { order: current, onReorder: save } = latest.current
       const from = current.indexOf(id!)
@@ -68,20 +85,22 @@ export function useReorder(
 
       const next = [...current]
       next.splice(to, 0, ...next.splice(from, 1))
+      lastTarget = over
       save(next)
     }
 
     function up() {
-      cell.releasePointerCapture(event.pointerId)
-      cell.removeEventListener('pointermove', move)
-      cell.removeEventListener('pointerup', up)
-      cell.removeEventListener('pointercancel', up)
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
       setDragging(null)
     }
 
-    cell.addEventListener('pointermove', move)
-    cell.addEventListener('pointerup', up)
-    cell.addEventListener('pointercancel', up)
+    // On window rather than the cell: the pointer leaves the cell almost
+    // immediately once the grid reflows underneath it.
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
   }, [])
 
   const handlers = useCallback(
