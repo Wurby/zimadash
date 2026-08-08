@@ -51,14 +51,39 @@ hole a larger one couldn't fit.
 
 **You own both the size and the position.** A tool declares a size per surface
 in `meta.json`, but that is only where it starts — in edit mode, tapping a tool
-tile or the stats badge opens a picker of sizes beside it and your choice wins
-from then on. The picker's reset chip hands the thing back to its declared size.
-The badge has no `meta.json` to declare one in, so its default is `STATS_SIZE`
-in `shared/layout.ts`, in the same shape a tool would use; that is its
-_collapsed_ size only, since expanding it has to claim room for every host.
+tile or a badge opens a picker of sizes beside it and your choice wins from then
+on. The picker's reset chip hands the thing back to its declared size.
 
 Actions, the theme toggle and the edit button are not resizable. They are a
 single icon, and one unit is what an icon is.
+
+**A badge has two sizes, and both are yours.** A badge is a system readout that
+expands in place rather than opening as its own screen — the stats badge is the
+only one today. Collapsed and expanded aren't the same thing scaled: collapsed
+is a glance and wants to be small enough to sit among the actions, while
+expanded has to fit its whole readout without scrolling inside itself, because a
+tile that claims a size and then hides half its contents behind a gesture is
+lying about that size. So each form carries its own default and its own
+override.
+
+Badges have no `meta.json`, so both defaults live in `BADGE_SIZES` in
+`shared/layout.ts`, in the shape a tool would have used. **Registering a badge
+in that table is all it takes** — `isBadge`, the picker, the two storage slots
+and the expand-while-selected behaviour all read from it, and nothing
+downstream names the stats badge. The expanded slot is stored under a `#expanded`
+suffix by `sizeKey`, so two forms cost no schema change; sizes are keyed
+independently of the order.
+
+Selecting a badge in edit mode leaves it **live** rather than making it a drag
+handle, so tapping it switches form and the picker follows to that form's size —
+otherwise the expanded size would be unreachable without leaving edit mode.
+Deselect it to drag it again. The picker is keyed on the storage slot so
+switching form remounts it and it re-measures.
+
+The stats badge's expanded default (`8x6`) is deliberately wider than any rung
+of `SIZE_OPTIONS`: that readout was measured to fit at that size, and shrinking
+it brings back the scrolling it was built to avoid. Reset is how you get back to
+it.
 
 The ladder runs from 1x1 — one unit, the size of a quick action — up to 6x6, and
 every rung fits inside a phone's eight columns so the same choice exists on

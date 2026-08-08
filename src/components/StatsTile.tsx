@@ -13,6 +13,10 @@ import { Icon } from './Icon'
  *
  * Collapsed it is the wordmark and two numbers. The monitoring was the MVP
  * placeholder and this is all the room it gets until asked for more.
+ *
+ * Both forms are sized from the grid, not from here — see `BADGE_SIZES` in
+ * `shared/layout.ts`. This component only has to fill whatever span it is
+ * given, in either form.
  */
 
 type HostStats = [host: string, stats: Stats]

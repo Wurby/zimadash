@@ -2,11 +2,13 @@ import { useState } from 'react'
 import { Link } from 'react-router'
 import type { ActionSummary } from '@shared/types'
 import {
+  BADGE_SIZES,
+  isBadge,
   itemId,
   overrideSpan,
   resolveSpan,
+  sizeKey,
   spanFor,
-  STATS_SIZE,
   type SizeBySurface,
   type Span,
 } from '@shared/layout'
@@ -73,8 +75,10 @@ export function Home() {
   const [ref, geometry] = useGrid<HTMLDivElement>()
   const { theme, toggle } = useTheme()
   const [editing, setEditing] = useState(false)
-  const [statsOpen, setStatsOpen] = useState(false)
-  // The tool tile whose size picker is open, if any.
+  // Which badges are showing their expanded readout. A list rather than one
+  // flag per badge, so a second badge needs no new state here.
+  const [expanded, setExpanded] = useState<string[]>([])
+  // The tile whose size picker is open, if any.
   const [sizing, setSizing] = useState<string | null>(null)
 
   const actions = usePolled('event-driven', () =>
@@ -94,11 +98,18 @@ export function Home() {
 
   const { order, sizes, reorder, resize } = useLayout(present)
 
-  // Tools and the stats badge have a size worth choosing. The actions and the
-  // two system buttons don't — they are a single icon, and one unit is what an
-  // icon is.
+  // Tools and badges have a size worth choosing. The actions and the two system
+  // buttons don't — they are a single icon, and one unit is what an icon is.
   function resizable(id: string): boolean {
-    return id.startsWith('tool:') || id === itemId.stats
+    return id.startsWith('tool:') || isBadge(id)
+  }
+
+  function isExpanded(id: string): boolean {
+    return expanded.includes(id)
+  }
+
+  function toggleBadge(id: string) {
+    setExpanded((was) => (was.includes(id) ? was.filter((open) => open !== id) : [...was, id]))
   }
 
   // A tap in edit mode has nowhere else to go — the drag only arms once the
@@ -106,32 +117,32 @@ export function Home() {
   // picker.
   const drag = useReorder(order, reorder, editing, (id) => {
     setSizing((was) => (was === id || !resizable(id) ? null : id))
-    // The badge's chosen size is its *collapsed* size, so picking one while it
-    // is expanded would change nothing you could see. Collapse it to sit under
-    // the picker it is about to be sized by.
-    if (id === itemId.stats) setStatsOpen(false)
   })
 
   function toolFor(id: string) {
     return tools.find((candidate) => itemId.tool(candidate.meta.slug) === id)
   }
 
-  /** The size a thing asks for, before any override of yours. */
+  /** The size a thing asks for, in its current form, before any override. */
   function declaredFor(id: string): SizeBySurface | undefined {
-    return id === itemId.stats ? STATS_SIZE : toolFor(id)?.meta.size
+    const badge = BADGE_SIZES[id]
+    if (badge) return isExpanded(id) ? badge.expanded : badge.collapsed
+    return toolFor(id)?.meta.size
+  }
+
+  /** Which slot this item's chosen size lives in right now. */
+  function keyFor(id: string): string {
+    return sizeKey(id, isExpanded(id))
   }
 
   function spanOf(id: string): Span {
-    // Expanding pushes the grid down rather than dropping over it, so it has to
-    // actually claim the space — more than you would ever pick for it at rest.
-    if (id === itemId.stats && statsOpen) return [Math.min(geometry.columns, 8), 6]
     if (!resizable(id)) return [1, 1]
-    return resolveSpan(declaredFor(id), sizes[id], geometry.breakpoint)
+    return resolveSpan(declaredFor(id), sizes[keyFor(id)], geometry.breakpoint)
   }
 
   function render(id: string) {
     if (id === itemId.stats) {
-      return <StatsTile open={statsOpen} onToggle={() => setStatsOpen((was) => !was)} />
+      return <StatsTile open={isExpanded(id)} onToggle={() => toggleBadge(id)} />
     }
 
     if (id.startsWith('tool:')) return <ToolTile slug={id.slice('tool:'.length)} />
@@ -182,19 +193,26 @@ export function Home() {
 
       <div ref={ref} style={gridStyle(geometry)}>
         {order.map((id) => {
+          // A selected badge hands its taps back. Both its forms are sizeable,
+          // and the only way to reach the expanded one is to expand it — so
+          // while its picker is open the badge stays live and tapping it
+          // switches form, with the picker following to that form's size.
+          // Deselect it (tap elsewhere, or Escape) to drag it again.
+          const live = editing && id === sizing && isBadge(id)
+
           // The edit button is never draggable. It is the only way out of edit
           // mode, and a cell that is a drag handle has its contents made
           // untappable — which would leave you stuck in here with nothing to
           // press. It can still be moved around like anything else once you
           // are done.
-          const grabbable = editing && id !== itemId.edit
+          const grabbable = editing && id !== itemId.edit && !live
 
           return (
             <div
               key={id}
               data-item={id}
               style={itemStyle(spanOf(id), geometry)}
-              {...(id === itemId.edit ? {} : drag.handlers(id))}
+              {...(id === itemId.edit || live ? {} : drag.handlers(id))}
               // min-h-0 matters: a grid item defaults to min-height:auto, so any
               // tile whose contents outgrow its span quietly stretches the row
               // track and knocks every other tile off the grid. Clipping keeps
@@ -219,11 +237,16 @@ export function Home() {
           than no picker. Unmounting means it re-measures when the drag ends. */}
       {editing && sizing && !drag.dragging && (
         <SizePicker
+          // Keyed on the slot, so expanding a badge remounts the picker and it
+          // measures the new shape from scratch. Without that it would keep the
+          // position it took against the collapsed tile whenever both forms
+          // happen to carry the same override.
+          key={keyFor(sizing)}
           item={sizing}
           unit={geometry.unit}
-          value={overrideSpan(sizes[sizing], geometry.breakpoint)}
+          value={overrideSpan(sizes[keyFor(sizing)], geometry.breakpoint)}
           declared={spanFor(declaredFor(sizing), geometry.breakpoint)}
-          onPick={(span) => resize(sizing, geometry.breakpoint, span)}
+          onPick={(span) => resize(keyFor(sizing), geometry.breakpoint, span)}
           onClose={() => setSizing(null)}
         />
       )}

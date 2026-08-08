@@ -69,17 +69,67 @@ export const SIZE_OPTIONS: Span[] = [
 ];
 
 /**
- * What the system stats badge is, before you say otherwise.
- *
- * It has no `meta.json` to declare a size in — it isn't a tool — so its default
- * lives here instead, in the same shape a tool would use. Small on a phone
- * where it is the least interesting thing on screen; a proper square once
- * there's room.
- *
- * This is only the *collapsed* size. Expanded, the badge claims whatever it
- * needs to show every host without scrolling inside itself.
+ * Item ids are prefixed by kind so the stored order can hold tools, actions and
+ * fixtures in one list without them colliding.
  */
-export const STATS_SIZE: SizeBySurface = { sm: [2, 2], md: [4, 4], lg: [4, 4] };
+export const itemId = {
+  tool: (slug: string) => `tool:${slug}`,
+  action: (id: string) => `action:${id}`,
+  stats: 'system:stats',
+  theme: 'system:theme',
+  edit: 'system:edit',
+} as const;
+
+/**
+ * **A badge has two sizes, and both are yours.**
+ *
+ * A badge is a system readout that expands in place rather than opening as its
+ * own screen — the stats badge is the only one today. That makes it unlike a
+ * tool in a way that matters here: collapsed and expanded aren't the same thing
+ * scaled, they are two different readouts with two different jobs. Collapsed is
+ * a glance, and wants to be small enough to sit among the actions. Expanded has
+ * to fit every host without scrolling inside itself, and a tile that has
+ * claimed a size and then hides half its contents behind a gesture is lying
+ * about that size.
+ *
+ * So each form carries its own declared default here, and each is overridden
+ * separately — see `sizeKey`. Registering a badge in this table is all it takes
+ * to get both; nothing downstream special-cases the stats badge by name.
+ *
+ * Badges have no `meta.json` to declare sizes in, since they aren't tools,
+ * which is why the defaults live here in the shape a tool would have used.
+ */
+export interface BadgeSizes {
+  collapsed: SizeBySurface;
+  expanded: SizeBySurface;
+}
+
+export const BADGE_SIZES: Record<string, BadgeSizes> = {
+  [itemId.stats]: {
+    // Small on a phone, where it is the least interesting thing on screen; a
+    // proper square once there is room for one.
+    collapsed: { sm: [2, 2], md: [4, 4], lg: [4, 4] },
+    // Wider than any rung of SIZE_OPTIONS, deliberately: the expanded readout
+    // was measured to fit at this size, and shrinking it brings back the
+    // scrolling it was built to avoid. Reset is how you get back to it.
+    expanded: { sm: [8, 6], md: [8, 6], lg: [8, 6] },
+  },
+};
+
+export function isBadge(id: string): boolean {
+  return Object.prototype.hasOwnProperty.call(BADGE_SIZES, id);
+}
+
+/**
+ * Where an item's chosen size is stored.
+ *
+ * A badge's two forms need two slots, so the expanded one gets a suffixed key.
+ * Sizes are keyed independently of the order, so this costs no schema change —
+ * a badge is simply two entries in the same flat table.
+ */
+export function sizeKey(id: string, expanded: boolean): string {
+  return expanded ? `${id}#expanded` : id;
+}
 
 /**
  * What a tile is actually sized at: your choice if you made one on *this*
@@ -103,18 +153,6 @@ export function overrideSpan(override: SizeBySurface | undefined, at: Breakpoint
   const raw = override?.[at];
   return raw && raw.length === 2 ? [raw[0], raw[1]] : null;
 }
-
-/**
- * Item ids are prefixed by kind so the stored order can hold tools, actions and
- * fixtures in one list without them colliding.
- */
-export const itemId = {
-  tool: (slug: string) => `tool:${slug}`,
-  action: (id: string) => `action:${id}`,
-  stats: 'system:stats',
-  theme: 'system:theme',
-  edit: 'system:edit',
-} as const;
 
 export interface Layout {
   version: number;
