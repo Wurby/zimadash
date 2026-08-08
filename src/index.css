@@ -1,19 +1,9 @@
 @import 'tailwindcss';
 
-/* Theme is class-driven so the header toggle can force light/dark; the inline
+/* Theme is class-driven so the toggle can force light/dark; the inline
    script in index.html seeds the class from localStorage, falling back to the
    OS preference. */
 @custom-variant dark (&:where(.dark, .dark *));
-
-/* Installed on a phone.
- *
- * iOS draws the web view under the status bar but does not always report a
- * top safe-area inset for it — env(safe-area-inset-top) can come back 0 while
- * the notch is still sitting on your header. This variant marks the case where
- * that bites so a floor can be applied, without touching a browser tab (the
- * chrome already protects the top) or the wall tablet, which is wider than any
- * phone and has nothing to clear. */
-@custom-variant installed-phone (@media (display-mode: standalone) and (max-width: 480px));
 
 @theme inline {
   --color-bg: var(--bg);
@@ -72,15 +62,26 @@ html.dark {
    bar buys, and it is why content needs insetting rather than the chrome
    getting shorter.
 
-   Horizontal and bottom insets sit on the body so every screen gets them. The
-   top inset is deliberately NOT here: the header is sticky, so padding the body
-   would move it down the page while it still slid under the notch on scroll.
-   The header pads itself instead, which also lets its background keep running
-   under the status bar. */
+   The top inset lives here now. It used to sit on the header instead, because a
+   sticky header would otherwise slide back under the notch as soon as you
+   scrolled — padding the page would have moved it down and fixed nothing. With
+   no header there is nothing pinned to the top any more, so the page is the
+   right place for it and the first row of the grid clears the island.
+
+   The floor is only applied to an installed phone: iOS will happily draw under
+   the status bar while reporting an inset of 0, and max() means a device that
+   does report one still wins. */
 body {
   @apply bg-bg text-ink font-sans antialiased;
 
+  padding-top: env(safe-area-inset-top);
   padding-left: env(safe-area-inset-left);
   padding-right: env(safe-area-inset-right);
   padding-bottom: env(safe-area-inset-bottom);
+}
+
+@media (display-mode: standalone) and (max-width: 480px) {
+  body {
+    padding-top: max(env(safe-area-inset-top), 3.25rem);
+  }
 }

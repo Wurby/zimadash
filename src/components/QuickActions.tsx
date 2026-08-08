@@ -20,7 +20,7 @@ const CONFIRM_MS = 5_000
 
 type Status = 'idle' | 'firing' | 'done' | 'failed'
 
-function ActionButton({ action }: { action: ActionSummary }) {
+export function ActionButton({ action }: { action: ActionSummary }) {
   const [status, setStatus] = useState<Status>('idle')
   const [armed, setArmed] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -77,7 +77,7 @@ function ActionButton({ action }: { action: ActionSummary }) {
       disabled={status === 'firing'}
       title={armed ? `Tap again to confirm — ${action.label}` : action.label}
       aria-label={armed ? `Confirm ${action.label}` : action.label}
-      className={`bg-surface grid size-10 place-items-center border transition-colors disabled:opacity-50 ${tone} ${
+      className={`bg-surface grid h-full w-full place-items-center border transition-colors disabled:opacity-50 ${tone} ${
         armed ? 'ring-danger/40 ring-2' : ''
       }`}
     >

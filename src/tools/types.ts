@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react'
 import type { RefreshTier } from '@shared/tiers'
+import type { SizeBySurface } from '@shared/layout'
 
 /**
  * Static, serialisable facts about a tool. Lives in `meta.json` next to the
@@ -20,6 +21,12 @@ export interface ToolMeta {
   backgroundColor: string
   /** A single character drawn into the generated icon. */
   glyph: string
+  /**
+   * How much of the dashboard grid this tool wants, per surface, as
+   * [columns, rows]. The tool decides its own size; you decide where it sits.
+   * Omit a surface and it falls back down the ladder to a 4x4 square.
+   */
+  size?: SizeBySurface
 }
 
 /**

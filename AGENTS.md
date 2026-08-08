@@ -11,8 +11,8 @@ tracker, whatever comes next. Tools that will never exist anywhere else in the
 shape he wants them.
 
 It is **not** a homelab monitoring dashboard. The system-stats view was an MVP
-placeholder and now lives as a single expandable panel in the header, which is
-all the room it gets. Do not treat it as the project's purpose, and do not
+placeholder and now lives as one tile on the grid that expands in place, which
+is all the room it gets. Do not treat it as the project's purpose, and do not
 extend it as though monitoring were the goal.
 
 Off-the-shelf dashboards (Homepage, Homarr, Dashy) were evaluated and rejected:
@@ -37,10 +37,20 @@ wall-mounted iPad mini (always on, read from across the room). Design for
 `sm`/`md`/`lg` properly — neither is the afterthought. Aim for a
 data-visualization aesthetic rather than plain text readouts.
 
-**The header is actions, not navigation.** Light/dark toggle, one-tap actions
-that fire real side effects (Homebridge scenes, robovac), and the system-stats
-panel. A tapped action swaps its icon for a checkmark for 5 seconds. Navigation
-back to the homepage is a back arrow inside each tool.
+**There is no header.** The dashboard is one grid holding everything — tools,
+one-tap actions, the theme toggle, the system readout — and nothing is pinned
+above it. Opening a tool should feel like opening an app: the tool fills the
+screen and owns its own way back. That means no theme toggle and no actions
+inside a tool, which is deliberate, not an omission.
+
+**The grid is ratios, not pixels.** Column count steps by surface (8 / 12 / 16)
+and the unit is measured to fill the width, so an action is one unit wherever it
+is — about 38px on a phone, about 59px on the wall — and a 3x3 tile is always
+exactly three actions wide. A tool declares its own size per surface in
+`meta.json`; you decide where it sits. Packing is dense, so ordering is the only
+thing stored and a small item drops back into a hole a larger one couldn't fit.
+
+A tapped action swaps its icon for a checkmark for 5 seconds.
 
 Quick actions are configured in `actions.json` in `DATA_DIR`, never in this
 repo — the request usually carries a credential. The browser is told an
@@ -64,8 +74,11 @@ re-added. Deploying is not enough, so test those changes on a fresh install or
 you will be debugging something you already fixed.
 
 iOS also draws the web view under the status bar while sometimes reporting
-`env(safe-area-inset-top)` as 0, which is why the header floors its top padding
-behind the `installed-phone` variant in `src/index.css`.
+`env(safe-area-inset-top)` as **0**, so `src/index.css` floors the body's top
+padding for an installed phone. That inset used to live on the header, because a
+sticky header would otherwise slide back under the notch on scroll; with no
+header, the page is the right place for it. If a sticky element ever returns,
+that reasoning inverts again.
 
 ## Refresh tiers
 
@@ -125,6 +138,32 @@ no storage format, no session lifetime, no lockout thresholds. The repo is
 public; the docs should not be a cheat sheet. Session lifetime in particular is
 a deliberate design choice and is not to be described in any tracked file.
 
+## The estimator
+
+The calorie tracker shells out to the Claude CLI installed on the box, so it
+runs on a subscription that already exists rather than a metered API key. That
+is the whole reason the tool exists instead of a paid app, and the cost is
+several seconds per estimate — the UI is built around the wait, not against it.
+
+Two rules:
+
+- **The tool grant is `WebSearch`, plus `Read` only when there is a photograph.**
+  Search earns its place: a branded or restaurant item gets looked up instead of
+  guessed at, and the model skips it for ordinary food, so a normal estimate
+  pays no latency for it. **`WebFetch` is deliberately excluded** — it would let
+  a crafted description send this box to an arbitrary URL, which search results
+  do not. This process handles input from the open internet; widening the grant
+  further is not a small change.
+- **A photograph never lands in `DATA_DIR`.** It goes to the OS temp directory,
+  is read once, and is deleted in a `finally`. What survives is the model's own
+  name for the meal and its numbers, which is enough to refine by text
+  afterwards.
+
+Replies are validated strictly — every configured field must come back as a
+plain number — with one retry, then an error. There is deliberately no fallback
+to logging a bare number when the estimator is down: a silently unestimated meal
+is worse than a visible failure.
+
 ## Stack
 
 - React 19 + TypeScript + Vite, Tailwind v4 (`@theme inline` tokens in
@@ -178,9 +217,11 @@ src/
   lib/refresh.ts      tier scheduler + usePolled — ONE timer per tier, app-wide
   lib/theme.ts        light/dark, class-driven on <html>
   lib/pwa.ts          swaps the manifest <link> per route
+  lib/grid.ts         measured grid geometry — columns per surface, unit derived
+  lib/layout.ts       the stored arrangement; lib/reorder.ts drives dragging
   auth/AuthGate.tsx   PIN unlock, wraps the app
-  components/         Header, StatsPanel, QuickActions, Icon, Meter
-  routes/             Home (tile grid), ToolShell (back arrow), NotFound
+  components/         StatsTile, QuickActions, Icon, Meter
+  routes/             Home (the grid), ToolShell (back arrow), NotFound
   tools/types.ts      the tool contract
   tools/registry.ts   import.meta.glob auto-registration
   tools/<slug>/       meta.json + tool.tsx — one folder per tool
@@ -191,7 +232,7 @@ server/src/
   cache.ts            stats polling loop
   actions.ts          quick-action proxy — credentials never reach the browser
   appShell.ts         per-tool install metadata, rewritten before the shell ships
-  shared/             types.ts, tiers.ts, appShell.ts — imported by BOTH sides
+  shared/             types, tiers, appShell, calories, layout — BOTH sides
   tools/registry.ts   the one list of server-side tools
   tools/<slug>.ts     a tool's /api/tools/<slug> routes
 scripts/

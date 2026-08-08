@@ -5,5 +5,6 @@
   "description": "What you ate, and what it cost",
   "themeColor": "#0284c7",
   "backgroundColor": "#f8fafc",
-  "glyph": "◔"
+  "glyph": "◔",
+  "size": { "sm": [8, 5], "md": [6, 5], "lg": [5, 5] }
 }

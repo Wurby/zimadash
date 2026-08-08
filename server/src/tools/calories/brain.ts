@@ -44,10 +44,12 @@ function run(prompt: string, withImage = false): Promise<string> {
   const bin = resolveClaude();
   if (!bin) throw new Error('the estimator is not available on this server');
 
-  // Text estimates run with no tools at all. Reading a photograph is the only
-  // thing that needs one, so Read is granted only for that call and nothing
-  // else is ever allowed — this process handles input from the open internet.
-  const args = withImage ? ['-p', prompt, '--allowed-tools', 'Read'] : ['-p', prompt];
+  // Search is always available so a branded or restaurant item can be looked up
+  // rather than guessed at; Read is added only when there is a photograph to
+  // look at. Nothing else is ever allowed — in particular not WebFetch, which
+  // would let a crafted description send this box to an arbitrary URL.
+  const tools = withImage ? 'WebSearch,Read' : 'WebSearch';
+  const args = ['-p', prompt, '--allowed-tools', tools];
 
   return new Promise((resolve, reject) => {
     execFile(bin, args, { timeout: TIMEOUT_MS, maxBuffer: MAX_OUTPUT }, (err, stdout) => {
@@ -99,6 +101,11 @@ ${fields.map((f) => `    "${f.id}": <number>`).join(',\n')}
 Every key under "values" is required and must be a plain number, not a string
 and not a range. Estimate rather than refuse — an approximate number is the
 point. Keep "assumptions" to one sentence; it is what gets corrected.
+
+You may search the web when the meal names something you do not reliably know —
+a brand, a specific restaurant dish, a packaged product. Don't search for
+ordinary food you can already estimate; it costs seconds and buys nothing. If
+you did look something up, say so in "assumptions".
 
 Fields:
 ${describeFields(fields)}`;
