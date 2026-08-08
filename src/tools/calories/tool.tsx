@@ -48,7 +48,7 @@ function Tile() {
       <CaloriesBar totals={day.data.totals} fields={fields} compact />
 
       {rest.length > 0 && (
-        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1">
+        <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-0.5">
           {rest.map((field) => {
             const value = Math.round(day.data.totals[field.id] ?? 0)
             return (
@@ -73,7 +73,7 @@ function Tile() {
         </div>
       )}
 
-      <div className="mt-auto pt-3">
+      <div className="mt-2">
         {showWeight && expenditure ? (
           <WeightBar
             settings={settings.data.weight}

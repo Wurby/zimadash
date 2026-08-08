@@ -41,14 +41,17 @@ function ToolTile({ slug }: { slug: string }) {
         </span>
       </h2>
 
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden p-4">
+      {/* The glyph is taken out of the flow rather than given a row of its own —
+          it is decoration, and a whole grid row of it was pushing the actual
+          content down and leaving a gap underneath. */}
+      <div className="relative min-w-0 flex-1 overflow-hidden p-3">
         <span
           aria-hidden="true"
-          className="text-ink-dim group-hover:text-accent self-end font-mono text-lg leading-none transition-colors"
+          className="text-ink-dim group-hover:text-accent pointer-events-none absolute top-2 right-2.5 font-mono text-base leading-none transition-colors"
         >
           {meta.glyph}
         </span>
-        <div className="mt-2 min-h-0 flex-1 overflow-hidden">
+        <div className="h-full overflow-hidden">
           <Tile />
         </div>
       </div>
