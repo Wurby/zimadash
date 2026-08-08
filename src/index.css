@@ -71,17 +71,23 @@ html.dark {
    The floor is only applied to an installed phone: iOS will happily draw under
    the status bar while reporting an inset of 0, and max() means a device that
    does report one still wins. */
-body {
-  @apply bg-bg text-ink font-sans antialiased;
-
-  padding-top: env(safe-area-inset-top);
-  padding-left: env(safe-area-inset-left);
-  padding-right: env(safe-area-inset-right);
-  padding-bottom: env(safe-area-inset-bottom);
+/* Named once so anything that has to sit clear of the island can reuse it —
+   the page's own top padding, and any element that sticks while you scroll. */
+:root {
+  --safe-top: env(safe-area-inset-top);
 }
 
 @media (display-mode: standalone) and (max-width: 480px) {
-  body {
-    padding-top: max(env(safe-area-inset-top), 3.25rem);
+  :root {
+    --safe-top: max(env(safe-area-inset-top), 3.25rem);
   }
+}
+
+body {
+  @apply bg-bg text-ink font-sans antialiased;
+
+  padding-top: var(--safe-top);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
 }
