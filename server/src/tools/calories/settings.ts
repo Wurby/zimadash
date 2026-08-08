@@ -34,6 +34,7 @@ const WEIGHT_DEFAULTS: Settings['weight'] = {
   // worse than leaving it alone.
   useComputedTarget: false,
   onTile: true,
+  onMain: true,
   baselineDate: null,
 };
 

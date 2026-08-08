@@ -121,6 +121,9 @@ export interface WeightSettings {
   useComputedTarget: boolean;
   /** Show the weight bar on the homepage tile. */
   onTile: boolean;
+  /** Show it on the tool's Today tab too. The Weight tab always shows it —
+   *  hiding the headline on its own tab would be odd. */
+  onMain: boolean;
   /**
    * Everything before this date is ignored by the expenditure maths — and only
    * by that. Nothing is deleted; the graphs still show the full span.

@@ -3,6 +3,7 @@ import type { LossRate, Settings } from '@shared/calories'
 import { usePolled } from '../../lib/refresh'
 import { deleteWeight, getWeight, putWeight, putSettings, resetBaseline } from './api'
 import { Chart } from './Chart'
+import { WeightBar } from './WeightBar'
 
 /**
  * Weigh-ins, the trend, and what the tool has learned from them.
@@ -100,6 +101,10 @@ export function WeightTab({
           Log
         </button>
       </div>
+
+      {config && (
+        <WeightBar settings={config} expenditure={expenditure} startLb={trend[0]?.lb ?? null} />
+      )}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Figure

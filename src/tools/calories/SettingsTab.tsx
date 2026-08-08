@@ -248,17 +248,23 @@ export function SettingsTab({
         )}
       </div>
 
-      <label className="border-line bg-surface flex cursor-pointer items-center gap-2 border p-3 text-xs">
-        <input
-          type="checkbox"
-          checked={current.weight.onTile}
-          onChange={(event) =>
-            update({ ...current, weight: { ...current.weight, onTile: event.target.checked } })
-          }
-          className="accent-accent size-4"
-        />
-        <span className="text-ink-dim tracking-wide uppercase">Weight bar on the tile</span>
-      </label>
+      <div className="border-line bg-surface flex flex-wrap items-center gap-4 border p-3">
+        <span className="text-ink-dim text-[0.65rem] font-medium tracking-wide uppercase">
+          Weight bar
+        </span>
+        <div className="ml-auto flex flex-wrap gap-4">
+          <Toggle
+            on={current.weight.onTile}
+            onChange={(onTile) => update({ ...current, weight: { ...current.weight, onTile } })}
+            label="Tile"
+          />
+          <Toggle
+            on={current.weight.onMain}
+            onChange={(onMain) => update({ ...current, weight: { ...current.weight, onMain } })}
+            label="Today tab"
+          />
+        </div>
+      </div>
 
       <ul className="space-y-2">
         {current.fields.map((field) => (

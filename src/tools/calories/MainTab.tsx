@@ -18,6 +18,7 @@ import {
   withEffectiveGoal,
 } from './api'
 import { CaloriesBar } from './CaloriesBar'
+import { WeightBar } from './WeightBar'
 import { Chart, type Point } from './Chart'
 import { buildPoints } from './points'
 
@@ -307,6 +308,14 @@ export function MainTab({ settings }: { settings: Settings | null }) {
   return (
     <div className="space-y-5">
       <CaloriesBar totals={totals} fields={fields} />
+
+      {settings?.weight.onMain && weight.status === 'ok' && (
+        <WeightBar
+          settings={settings.weight}
+          expenditure={weight.data.expenditure}
+          startLb={weight.data.trend[0]?.lb ?? null}
+        />
+      )}
 
       <form onSubmit={submit}>
         <div className="relative">
