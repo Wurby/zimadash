@@ -144,7 +144,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   if (phase === 'unreachable') {
     return (
       // Positioned to match the PIN screen, so retrying doesn't move the card.
-      <div className="flex min-h-dvh justify-center px-6 pt-16 pb-6 sm:items-center sm:pt-6">
+      <div className="flex min-h-dvh items-start justify-center px-6 pt-16 pb-6 sm:items-center sm:pt-6">
         <div className="border-line bg-surface w-full max-w-sm border p-6 text-center shadow-sm sm:p-8">
           <h1 className="text-xl font-semibold tracking-tight">zimadash</h1>
           <p className="text-ink-dim mt-2 text-sm">Can't reach the dashboard server.</p>
@@ -170,7 +170,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     // the keyboard opens — the visual viewport does, the layout one doesn't — so
     // a centred card sits behind the keyboard, and autoFocus opens it on load.
     // Centred from sm up, where there is no keyboard to dodge.
-    <div className="flex min-h-dvh justify-center px-6 pt-16 pb-6 sm:items-center sm:pt-6">
+    <div className="flex min-h-dvh items-start justify-center px-6 pt-16 pb-6 sm:items-center sm:pt-6">
       <form
         onSubmit={submit}
         className="border-line bg-surface w-full max-w-sm border p-6 shadow-sm sm:p-8"
