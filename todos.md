@@ -10,10 +10,60 @@ bottom — it's reference, not work.
 
 ---
 
-## Phase 5 — edit all history
+## Loose ends
+
+Gaps in things that already work. Each one has an obvious fix and none is a
+project — this is the list to raid when there's an hour spare. Roughly
+best-first; the last two are conditional and say so.
 
 - [ ] The Log tab stops at a fortnight. Reach any entry, not just recent ones —
       a month or date-range picker rather than a fixed window
+- [ ] A way to reset or change the PIN from the UI rather than by SSH
+- [ ] Write a real `actions.json` (Homebridge scenes, robovac). The plumbing is
+      done and untested against a live endpoint; no action is configured yet
+- [ ] Persist whether a badge is expanded. It's component state today, so a
+      reload collapses it — and now that both forms are separately sizeable, a
+      refresh throws away the expanded size you just set. The wall display is
+      the case that wants it: always on, and it would probably live expanded.
+      Belongs in `layout.json` next to the sizes
+- [ ] Tool tiles below about 3x2 are just the vertical title band. The band is
+      24px and the padding another 24px, which already exceeds one 38px unit, so
+      1x1 and 2x1 clip to nothing readable. The ladder goes that small for the
+      badges' sake, so the fix is at the tile end: either a per-item minimum, or
+      `ToolTile` drops the band below some span and shows the glyph alone
+- [ ] Debounce the size writes. Tapping through a few sizes to compare fires a
+      PUT each time. They're chained so they can't land out of order, and it's a
+      home server — but a short debounce would be politer
+- [ ] Drop the reset chip from the size picker. Thirteen labelled sizes and one
+      bare `↺` whose `title` never fires on touch; once you own the size, the
+      tool's opinion isn't worth a cell. **One thing to settle first:** two
+      declared defaults are off-ladder — the stats badge's expanded `8x6`, and
+      calories' `8x5` on a phone — and reset is currently the only way back to
+      them. Either put those sizes on the ladder, accept that a first pick is
+      one-way, or leave the chip alone
+- [ ] Settle the calorie target on a weekly cadence, with a recompute-now
+      button. It currently recalculates on every read, so it drifts as data
+      arrives rather than holding still for a week — the EWMA and the 28-day
+      window damp it heavily, so this is only worth doing if the number moving
+      under you turns out to be annoying in practice. Storing the last computed
+      target with its date is the change
+- [ ] Where the permanent edit button sits on the grid. It's just another item
+      in the order right now, which is fine at this size and probably won't be
+      once there's more on the dash
+- [ ] _If a real screen disagrees:_ a per-device order, not just per-device
+      sizes. Sizes already split by surface; the order is still one shared list,
+      and dense packing makes that mostly fine
+- [ ] _If ids ever churn:_ prune stale size overrides. `applyOrder` drops
+      unknown ids from the order but nothing does the same for `sizes`, so an
+      uninstalled tool leaves its entry behind forever. One filter on write —
+      but not before ids are stable enough that pruning can't eat something that
+      was about to come back
+- [ ] _At the first schema change that needs it:_ migrate-on-read for
+      `layout.json`. `Layout.version` is written and never read. Two additions
+      have now been absorbed as optional fields with defaults, which is simpler
+      than a migrate function and is the deliberate approach until something
+      needs to actually rewrite stored data — at which point copy the pattern
+      from the calorie settings
 
 ---
 
@@ -52,29 +102,6 @@ is unreachable. Those are different tools.
 
 ---
 
-## Loose ends
-
-Gaps in things that already work. Each one has an obvious fix and none is a
-project — this is the list to raid when there's an hour spare.
-
-- [ ] A way to reset or change the PIN from the UI rather than by SSH
-- [ ] Write a real `actions.json` (Homebridge scenes, robovac). The plumbing is
-      done and untested against a live endpoint; no action is configured yet
-- [ ] Settle the calorie target on a weekly cadence, with a recompute-now
-      button. It currently recalculates on every read, so it drifts as data
-      arrives rather than holding still for a week — the EWMA and the 28-day
-      window damp it heavily, so this is only worth doing if the number moving
-      under you turns out to be annoying in practice. Storing the last computed
-      target with its date is the change
-- [ ] Where the permanent edit button sits on the grid. It's just another item
-      in the order right now, which is fine at this size and probably won't be
-      once there's more on the dash
-- [ ] A per-device order, not just per-device sizes. Sizes already split by
-      surface; the order is still one shared list. Dense packing makes that
-      mostly fine, so this waits until a real screen disagrees
-
----
-
 ## Swaps waiting on a reason
 
 Replacing something that works with something better. Each is blocked on a
@@ -95,6 +122,15 @@ Things that don't exist yet, in any form, and might not ever.
 - [ ] Apple Health integration for the calorie tracker
 - [ ] E Ink display mode — high contrast, no color-only meaning, no motion.
       Watching the space; not a constraint today
+
+---
+
+## To be reviewed
+
+A holding pen for things Claude noticed while building but Joshua hasn't ruled
+on. Nothing here is agreed work — it gets promoted, or it gets deleted.
+
+_Empty. Last cleared after the tile-sizing work._
 
 ---
 
@@ -128,3 +164,12 @@ that holds steady at goal, and a non-destructive baseline reset. The weight bar
 shows up on the tile and on the Today tab, each switchable off in settings; the
 Weight tab always shows it, since hiding the headline on its own tab would be
 odd.
+
+---
+
+## Phases 0–5, retired as a numbering scheme
+
+Phase 5 was one bullet — a date-range picker on the Log tab — which is a loose
+end, not a phase, and it now sits there. Everything numbered below 6 is built.
+Homebridge keeps its number because it's a genuinely new tool with an unresolved
+fork in it; if another lands, number it 7.
