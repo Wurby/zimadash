@@ -21,8 +21,11 @@ import { Config } from './Config'
 /**
  * Weather — what it's doing outside.
  *
- * `ambient`: a minute stale is fine, and the server holds a cache on the same
- * interval so the tile can't re-fetch a value that cannot have changed.
+ * `slow`: the forecast models only update every few minutes, so polling on
+ * `ambient` was re-fetching a number that could not have moved — about 1,400
+ * upstream calls a day for it. The server cache is on the same tier, so neither
+ * half can drift ahead of the other. A tab still fetches on mount and on
+ * becoming visible, so picking up your phone gets you current data regardless.
  *
  * Which blocks appear is yours — each is a switch in the route behind the tile,
  * because the right answer differs between a phone in your hand and a screen on
@@ -35,7 +38,7 @@ const STRIP_HOURS = 8
 /**
  * The report's own clock, not the wall clock.
  *
- * `fetchedAt` moves on every ambient tick, so the strip still advances — and
+ * `fetchedAt` moves on every tick, so the strip still advances — and
  * rendering stays a pure function of the data, which reading `Date.now()` mid
  * render would not be.
  */
@@ -182,7 +185,7 @@ function Forecast({
 }
 
 function Tile() {
-  const weather = usePolled('ambient', getWeather)
+  const weather = usePolled('slow', getWeather)
 
   if (weather.status === 'loading') return <p className="text-ink-dim text-sm">loading…</p>
   if (weather.status === 'error') return <p className="text-danger text-sm">{weather.message}</p>
@@ -220,7 +223,7 @@ function Tile() {
 
 export default defineTool({
   meta,
-  tier: 'ambient',
+  tier: 'slow',
   Tile,
   View: Config,
 })

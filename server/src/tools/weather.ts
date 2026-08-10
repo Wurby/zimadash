@@ -35,8 +35,12 @@ const TIMEOUT_MS = 10_000;
  * Cache lifetime, taken from the tier the tool polls on so it can never end up
  * slower than the clients reading it — a longer TTL here would have the tile
  * re-fetching values that cannot have changed.
+ *
+ * `slow` rather than `ambient`: the forecast models update every few minutes at
+ * best, so a 60s cache was spending roughly 1,400 upstream calls a day to
+ * re-fetch a number that could not have moved.
  */
-const TTL_MS = intervalFor('ambient') ?? 60_000;
+const TTL_MS = intervalFor('slow') ?? 900_000;
 
 interface CacheEntry {
   report: WeatherReport;

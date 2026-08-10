@@ -140,11 +140,24 @@ that reasoning inverts again.
 There is no single global refresh interval. Data is polled at the cadence it
 actually changes:
 
-| Tier           | Cadence | For                                            |
-| -------------- | ------- | ---------------------------------------------- |
-| `live`         | 5s      | System stats — anything genuinely in motion    |
-| `ambient`      | 60s+    | Weather, calendar — a minute stale is fine     |
-| `event-driven` | never   | Self-entered data; refetch after you mutate it |
+| Tier           | Cadence | For                                                |
+| -------------- | ------- | -------------------------------------------------- |
+| `live`         | 5s      | System stats — anything genuinely in motion        |
+| `ambient`      | 60s     | Elapsed-time readouts, calendar — a minute is fine |
+| `slow`         | 15m     | Weather — the source itself only moves that often  |
+| `event-driven` | never   | Self-entered data; refetch after you mutate it     |
+
+**`slow` exists because the cache rule below is a two-way constraint.** A
+server cache may not be slower than the client tier it feeds, so putting a tile
+on `ambient` forces every upstream fetch to 60s too — which had weather asking
+Open-Meteo about 1,400 times a day for a forecast that updates every few
+minutes. When the bound that matters is how often the _source_ changes rather
+than how fast you want to see it, that's this tier.
+
+A tier only bounds the **steady state**. Every tab fetches on mount and again
+the moment it becomes visible, so a phone picked up out of a pocket is current
+whatever tier the tool is on — the cadence only governs a screen left staring at
+the same thing, which is the wall display.
 
 Polling **pauses when the tab is hidden**. A server-side cache must never be
 slower than the client tier it feeds, or the client re-fetches values that
