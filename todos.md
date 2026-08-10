@@ -12,9 +12,9 @@ bottom — it's reference, not work.
 
 ## Loose ends
 
-Gaps in things that already work. Each one has an obvious fix and none is a
-project — this is the list to raid when there's an hour spare. Roughly
-best-first; the last two are conditional and say so.
+Gaps and bugs in things that already work. Each one has an obvious fix and none
+is a project — this is the list to raid when there's an hour spare. Roughly
+best-first.
 
 - [ ] The Log tab stops at a fortnight. Reach any entry, not just recent ones —
       a month or date-range picker rather than a fixed window
@@ -31,97 +31,120 @@ best-first; the last two are conditional and say so.
       1x1 and 2x1 clip to nothing readable. The ladder goes that small for the
       badges' sake, so the fix is at the tile end: either a per-item minimum, or
       `ToolTile` drops the band below some span and shows the glyph alone
-- [ ] Debounce the size writes. Tapping through a few sizes to compare fires a
-      PUT each time. They're chained so they can't land out of order, and it's a
-      home server — but a short debounce would be politer
-- [ ] Drop the reset chip from the size picker. Thirteen labelled sizes and one
-      bare `↺` whose `title` never fires on touch; once you own the size, the
-      tool's opinion isn't worth a cell. **One thing to settle first:** two
-      declared defaults are off-ladder — the stats badge's expanded `8x6`, and
-      calories' `8x5` on a phone — and reset is currently the only way back to
-      them. Either put those sizes on the ladder, accept that a first pick is
-      one-way, or leave the chip alone
-- [ ] Settle the calorie target on a weekly cadence, with a recompute-now
-      button. It currently recalculates on every read, so it drifts as data
-      arrives rather than holding still for a week — the EWMA and the 28-day
-      window damp it heavily, so this is only worth doing if the number moving
-      under you turns out to be annoying in practice. Storing the last computed
-      target with its date is the change
-- [ ] Where the permanent edit button sits on the grid. It's just another item
-      in the order right now, which is fine at this size and probably won't be
-      once there's more on the dash
-- [ ] _If a real screen disagrees:_ a per-device order, not just per-device
-      sizes. Sizes already split by surface; the order is still one shared list,
-      and dense packing makes that mostly fine
-- [ ] _If ids ever churn:_ prune stale size overrides. `applyOrder` drops
-      unknown ids from the order but nothing does the same for `sizes`, so an
-      uninstalled tool leaves its entry behind forever. One filter on write —
-      but not before ids are stable enough that pruning can't eat something that
-      was about to come back
-- [ ] _At the first schema change that needs it:_ migrate-on-read for
-      `layout.json`. `Layout.version` is written and never read. Two additions
-      have now been absorbed as optional fields with defaults, which is simpler
-      than a migrate function and is the deliberate approach until something
-      needs to actually rewrite stored data — at which point copy the pattern
-      from the calorie settings
 
 ---
 
-## Phase 6 — Homebridge
+## New tools
 
-A tool tile for the house. Needs a grill-me before building — the questions
-below are the ones that would change the shape of it, not details.
+Each one needs a grill-me before building — what's here is the shape and the
+forks, not a spec. Roughly in the order I'd build them.
 
-**What already exists to build on.** `server/src/actions.ts` proxies a
-configured HTTP request from the server so a credential never reaches the
-browser, and `actions.json` in `DATA_DIR` is where such a credential would live.
-Firing a Homebridge scene is already possible today as a 1x1 quick action with
-no new code — the loose end about writing a real `actions.json` covers that. So
-this phase is only worth doing for what a quick action _can't_ do.
+### Personal trainer
 
-**The fork that decides everything.** Does the tile only _fire_ things, or does
+Replaces `Personal/fitness/workout-guide.md` and `workout-log.md` in the vault,
+and expands on both. The guide is already a complete brief — session rotation
+(Upper A → Lower → Upper B → Lower), an exercise pool per day type, the
+equipment inventory and its loaded-weight ceilings, a knee protocol with its own
+override on the adjustment rule, the conditioning-without-cardio levers, and a
+0–10 difficulty scale that feeds forward into next session's load. The log is
+four sessions of exercise / weight / sets×reps / difficulty. All of that
+survives; what it doesn't have is a UI, and it's being read by a chat window
+that has to be handed the whole doc every time.
+
+This is the estimator pattern pointed at generation rather than extraction, so
+the Claude CLI shell-out already in the calorie tracker is the mechanism, with
+the same several-second wait to design around.
+
+**Two constraints before anything else is decided:**
+
+- **The brief lives in `DATA_DIR`.** It carries health information — a GLP-1
+  protocol, a family injury history — and this repo is public. Not in the tool
+  folder, not in a fixture, not in a test.
+- **Mid-session state has to survive a lock and a reload.** The chat version
+  never needed this because the conversation held it. A tool walking you through
+  exercise four of six, on a phone that sleeps between sets, does not get to
+  lose its place.
+
+- [ ] Does the vault stay the source of truth, does the tool become the only
+      home, or do they sync? "Replace" suggests the tool wins, but the archive
+      is years of history and nothing should eat it
+- [ ] Is the whole session generated up front, or one exercise at a time? Up
+      front means one wait and a plan you can see; per-exercise means the model
+      can react to the difficulty you just reported, at the cost of a wait
+      between every exercise
+- [ ] Is the brief editable in the UI, or a file you edit by hand? It's long,
+      it's prose, and most of it changes rarely — but the equipment list changes
+      the day a heavier dumbbell arrives
+- [ ] What the tile shows. Next session type is the obvious answer; a
+      per-lift progression chart is the one that earns the space
+- [ ] Does it need to work with no network mid-session? A garage or a basement
+      is exactly where this gets used, and a generated session that can't be
+      logged is worse than a paper note
+- [ ] The 2-week window and monthly archive files in the guide are a workaround
+      for living in a vault. A real store makes both moot — don't port them in
+- [ ] Weight and the GLP-1 context overlap with the calorie tracker, but tools
+      don't reach into each other. Either the trainer asks for what it needs, or
+      the overlap stays unjoined
+
+### Homebridge
+
+A tool tile for the house.
+
+`server/src/actions.ts` already proxies a configured HTTP request so a
+credential never reaches the browser, and firing a scene is a 1x1 quick action
+with no new code — the `actions.json` loose end covers that. **So this is only
+worth building for what a quick action can't do.**
+
+**The fork that decides everything:** does the tile only _fire_ things, or does
 it _show state_ — which lights are on, what the thermostat reads, whether a door
-is open? Firing is what already exists. Showing state means polling Homebridge
-on a tier, holding a view of the house, and handling the case where the bridge
-is unreachable. Those are different tools.
-
-**Other questions to settle first:**
+is open? Firing already exists. Showing state means polling on a tier, holding a
+view of the house, and handling an unreachable bridge. Those are different tools.
 
 - [ ] How it talks to Homebridge. Its UI exposes an HTTP API behind a token,
-      which is straightforward; speaking HomeKit directly is not. Whichever it
-      is, the token belongs in `DATA_DIR` and the browser never sees it
-- [ ] Which accessories appear, and whether that's a fixed list you configure or
-      everything the bridge reports
-- [ ] Refresh tier. State that's shown has to be polled — probably `ambient`,
-      but a light you just toggled needs to look right immediately, which
-      argues for a refetch after mutating rather than waiting for a tick
+      which is straightforward; speaking HomeKit directly is not. Either way the
+      token lives in `DATA_DIR` and the browser never sees it
+- [ ] Which accessories appear — a fixed list you configure, or everything the
+      bridge reports
+- [ ] Refresh tier. Probably `ambient`, but a light you just toggled has to look
+      right immediately, which argues for a refetch after mutating rather than
+      waiting for a tick
 - [ ] What it looks like at tile size versus opened, given the wall display is
       the surface most likely to want it
-- [ ] What happens when the bridge is down — a stale view is worse than an
-      honest one for something that controls the house
+- [ ] What happens when the bridge is down. A stale view is worse than an honest
+      one for something that controls the house
+
+### Habit tracker
+
+Still just an idea. A year of dots is the best wall visual on this list, and
+it's pure `event-driven` — but the design question isn't the data, it's whether
+the tile shows one habit large or every habit small.
 
 ---
 
-## Swaps waiting on a reason
+## Decided, not doing yet
 
-Replacing something that works with something better. Each is blocked on a
-trigger rather than on effort — don't do these until the trigger fires.
+Each of these is blocked on a trigger, not on effort. They're recorded so the
+reasoning doesn't get re-litigated — don't pick one up until its trigger fires.
 
-- [ ] Swap the estimator from the Claude CLI to the API — roughly a third of the
-      latency, at the cost of a metered key. **Trigger:** the wait annoys
-- [ ] Server-sent events instead of polling. **Trigger:** the wall display wants
-      it; nothing else does
-
----
-
-## New ground
-
-Things that don't exist yet, in any form, and might not ever.
-
-- [ ] Habit tracker
-- [ ] Apple Health integration for the calorie tracker
-- [ ] E Ink display mode — high contrast, no color-only meaning, no motion.
-      Watching the space; not a constraint today
+- **Swap the estimator from the Claude CLI to the API.** Roughly a third of the
+  latency, at the cost of a metered key. _Trigger:_ the wait annoys.
+- **Server-sent events instead of polling.** _Trigger:_ the wall display wants
+  it; nothing else does.
+- **Settle the calorie target on a weekly cadence**, with a recompute-now
+  button. It recalculates on every read today, so it drifts as data arrives
+  rather than holding still. The EWMA and the 28-day window damp it heavily.
+  _Trigger:_ the number moving under you turns out to be annoying in practice.
+- **A per-device order, not just per-device sizes.** Sizes already split by
+  surface; the order is one shared list and dense packing makes that mostly
+  fine. _Trigger:_ a real screen disagrees.
+- **Prune stale size overrides.** `applyOrder` drops unknown ids from the order
+  but nothing does the same for `sizes`, so an uninstalled tool leaves its entry
+  behind forever. One filter on write. _Trigger:_ ids churn enough to matter —
+  and not before pruning can't eat something that was about to come back.
+- **Migrate-on-read for `layout.json`.** `Layout.version` is written and never
+  read. Two additions have been absorbed as optional fields with defaults, which
+  is simpler than a migrate function. _Trigger:_ a schema change that has to
+  rewrite stored data — then copy the pattern from the calorie settings.
 
 ---
 
@@ -165,11 +188,30 @@ shows up on the tile and on the Today tab, each switchable off in settings; the
 Weight tab always shows it, since hiding the headline on its own tab would be
 odd.
 
----
+**Last time I, Countdowns and Weather.** Three tools at once, and the first
+proof that the registry scales past one real tool — each needed a folder, a
+server file and one line in the server registry, and picked up a route, a tile,
+a manifest and an install identity for free.
 
-## Phases 0–5, retired as a numbering scheme
+They share a shape that turned out to be worth naming: **the tile is the tool
+and the route is its settings.** Last time I logs a tap on the grid and keeps
+configuration behind the title band; Countdowns and Weather are readouts whose
+route is nothing but switches. That inverts the calorie tracker, where the tile
+is a summary and the work happens inside.
 
-Phase 5 was one bullet — a date-range picker on the Log tab — which is a loose
-end, not a phase, and it now sits there. Everything numbered below 6 is built.
-Homebridge keeps its number because it's a genuinely new tool with an unresolved
-fork in it; if another lands, number it 7.
+Making that possible added `interactiveTile` to the tool contract — opt in and
+the title band carries the link so the tile body can take its own taps, rather
+than the whole tile being one link. Tools that don't opt in are untouched.
+
+Two things fell out of building them that are now written into AGENTS.md:
+
+- **Tier by what's on screen, not where the data came from.** All three hold
+  self-entered or rarely-changing data, and all three are `ambient`, because
+  what they render is elapsed time — it moves while the record sits still, and a
+  countdown has to have rolled over by morning on the wall display.
+- **Open-Meteo's `timezone=auto` returns local times with no offset on them**,
+  which `new Date()` reads in the viewer's zone. The offset is resolved
+  server-side into a real instant once, on the way through. Verified against
+  London and Tokyo landing on the same UTC instant.
+
+Phase numbering stopped here — everything above is a tool, not a phase.

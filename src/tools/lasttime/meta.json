@@ -1,0 +1,14 @@
+{
+  "slug": "lasttime",
+  "name": "Last Time",
+  "shortName": "Last Time",
+  "description": "The things with no schedule",
+  "themeColor": "#0369a1",
+  "backgroundColor": "#f8fafc",
+  "glyph": "◷",
+  "size": {
+    "sm": [6, 4],
+    "md": [6, 4],
+    "lg": [4, 4]
+  }
+}

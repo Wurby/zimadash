@@ -48,6 +48,21 @@ export interface ToolDefinition {
   Tile: ComponentType
   /** Rendered at /<slug>. Free to own sub-routes beneath that. */
   View: ComponentType
+  /**
+   * The tile takes taps of its own rather than being one big link into the
+   * tool.
+   *
+   * By default a tile is wrapped whole in a link, which is right when the tile
+   * is a readout and the tool is where you act. Some tools invert that — the
+   * doing is a single tap and belongs on the grid, and the route is where you
+   * configure it. Opt in and the title band becomes the way in, leaving the
+   * body free; a button inside a link is invalid anyway, and browsers handle it
+   * badly.
+   *
+   * The tile still has to work in edit mode, where the grid makes its contents
+   * inert so the cell can be dragged. That is handled for you.
+   */
+  interactiveTile?: boolean
 }
 
 /** Helper so a tool file gets type-checking without repeating the annotation. */

@@ -1,0 +1,14 @@
+{
+  "slug": "weather",
+  "name": "Weather",
+  "shortName": "Weather",
+  "description": "What it's doing outside",
+  "themeColor": "#0284c7",
+  "backgroundColor": "#f8fafc",
+  "glyph": "◍",
+  "size": {
+    "sm": [6, 6],
+    "md": [6, 6],
+    "lg": [4, 6]
+  }
+}

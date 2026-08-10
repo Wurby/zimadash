@@ -147,6 +147,13 @@ Polling **pauses when the tab is hidden**. A server-side cache must never be
 slower than the client tier it feeds, or the client re-fetches values that
 cannot have changed.
 
+**Pick the tier by what's on screen, not by where the data came from.** Data you
+enter by hand still belongs on `ambient` if what it renders as is _elapsed time_
+— "3 days ago", "in 12 days", a bar filling toward a due date. Those move on
+their own while the record sits still, and a countdown has to have rolled over
+by the time you look at the wall display in the morning. `event-driven` is for a
+readout that genuinely cannot change until you change it.
+
 These intervals live in `server/src/shared/tiers.ts` and are read by both sides,
 so they cannot drift apart. Use `usePolled(tier, fetcher)` from
 `src/lib/refresh.ts` rather than a `setInterval` in a component — there is one
@@ -331,6 +338,16 @@ default-exports `defineTool({ meta, tier, Tile, View })`. That is the whole
 registration — it gets a route, a homepage tile, and its own PWA manifest with
 no central list to edit. The slug must equal the folder name or the registry
 throws at startup.
+
+**A tile is a link unless it says otherwise.** By default `ToolTile` wraps the
+whole tile in one, which is right when the tile is a readout and the tool is
+where you act. Some tools invert that: the doing is a single tap and belongs on
+the grid, and the route is only where you configure it. Set
+`interactiveTile: true` and the **title band** carries the link instead, leaving
+the body free to take its own taps — a button inside a link is invalid anyway,
+and browsers handle it badly. Edit mode already makes tile contents inert so the
+cell can still be dragged, so an interactive tile needs no special handling
+there.
 
 If it needs server routes, add `server/src/tools/<slug>.ts` exporting
 `{ slug, router }` and put it in `server/src/tools/registry.ts`. It owns

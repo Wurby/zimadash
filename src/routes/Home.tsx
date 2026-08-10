@@ -38,34 +38,58 @@ import { useReorder } from '../lib/reorder'
 function ToolTile({ slug }: { slug: string }) {
   const tool = tools.find((candidate) => candidate.meta.slug === slug)
   if (!tool) return null
-  const { meta, Tile } = tool
+  const { meta, Tile, interactiveTile } = tool
+
+  // The title strip is the tile's left padding, same as the badge. When the
+  // body takes its own taps the strip is also the only way into the tool, so it
+  // carries the link instead of the whole tile.
+  const band = (
+    <span className="rotate-180 text-sm leading-none font-bold tracking-[0.12em] text-slate-600 [writing-mode:vertical-rl] dark:text-slate-300">
+      {meta.name}
+    </span>
+  )
+
+  const body = (
+    // The glyph is taken out of the flow rather than given a row of its own —
+    // it is decoration, and a whole grid row of it was pushing the actual
+    // content down and leaving a gap underneath.
+    <div className="relative min-w-0 flex-1 overflow-hidden p-3">
+      <span
+        aria-hidden="true"
+        className="text-ink-dim group-hover:text-accent pointer-events-none absolute top-2 right-2.5 font-mono text-base leading-none transition-colors"
+      >
+        {meta.glyph}
+      </span>
+      <div className="h-full overflow-hidden">
+        <Tile />
+      </div>
+    </div>
+  )
+
+  const frame =
+    'border-line bg-surface hover:border-accent focus-visible:border-accent group flex h-full items-stretch overflow-hidden border shadow-sm transition-colors outline-none'
+
+  if (interactiveTile) {
+    return (
+      <div className={frame}>
+        <Link
+          to={`/${meta.slug}`}
+          aria-label={`Configure ${meta.name}`}
+          className="hover:bg-slate-300 focus-visible:bg-slate-300 dark:hover:bg-slate-700 dark:focus-visible:bg-slate-700 flex w-6 shrink-0 items-center justify-center bg-slate-200 transition-colors outline-none dark:bg-slate-800"
+        >
+          {band}
+        </Link>
+        {body}
+      </div>
+    )
+  }
 
   return (
-    <Link
-      to={`/${meta.slug}`}
-      className="border-line bg-surface hover:border-accent focus-visible:border-accent group flex h-full items-stretch overflow-hidden border shadow-sm transition-colors outline-none"
-    >
-      {/* The title strip is the tile's left padding, same as the badge. */}
+    <Link to={`/${meta.slug}`} className={frame}>
       <h2 className="flex w-6 shrink-0 items-center justify-center bg-slate-200 dark:bg-slate-800">
-        <span className="rotate-180 text-sm leading-none font-bold tracking-[0.12em] text-slate-600 [writing-mode:vertical-rl] dark:text-slate-300">
-          {meta.name}
-        </span>
+        {band}
       </h2>
-
-      {/* The glyph is taken out of the flow rather than given a row of its own —
-          it is decoration, and a whole grid row of it was pushing the actual
-          content down and leaving a gap underneath. */}
-      <div className="relative min-w-0 flex-1 overflow-hidden p-3">
-        <span
-          aria-hidden="true"
-          className="text-ink-dim group-hover:text-accent pointer-events-none absolute top-2 right-2.5 font-mono text-base leading-none transition-colors"
-        >
-          {meta.glyph}
-        </span>
-        <div className="h-full overflow-hidden">
-          <Tile />
-        </div>
-      </div>
+      {body}
     </Link>
   )
 }

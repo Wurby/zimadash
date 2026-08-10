@@ -1,6 +1,9 @@
 import type { Router } from 'express';
 import calories from './calories/index.js';
+import countdowns from './countdowns.js';
+import lasttime from './lasttime.js';
 import scratch from './scratch.js';
+import weather from './weather.js';
 
 /**
  * A tool's server-side half. It owns everything under /api/tools/<slug> and
@@ -17,4 +20,4 @@ export interface ServerTool {
  * place that changes. `index.ts` mounts the whole array in a loop and never
  * grows a branch per tool.
  */
-export const serverTools: ServerTool[] = [calories, scratch];
+export const serverTools: ServerTool[] = [calories, countdowns, lasttime, scratch, weather];
