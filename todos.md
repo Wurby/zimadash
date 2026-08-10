@@ -36,6 +36,14 @@ best-first.
       entirely touch. It's shared, so this lands on calories and scratch as much
       as the new tools. The config screens were brought up to 44 during the
       mobile pass; this was left alone only because it sits outside those tools
+- [ ] Check the trainer's three session-type hues hold up at cell size in both
+      themes. Colour is the only carrier at 11px, and violet/teal/amber were
+      picked on paper rather than on the wall display. There is real data in the
+      grid now, so this is a look rather than a guess
+- [ ] Check whether midpointing the imported difficulty ranges distorted the
+      early history. "5-6" became 5.5 and then "hard"; if a few of those should
+      have been "easy" the first fortnight of the trend is off by a rung. Only
+      worth touching if the early curve looks wrong
 
 ---
 
@@ -97,274 +105,6 @@ answer:
 Each one needs a grill-me before building — what's here is the shape and the
 forks, not a spec. Roughly in the order I'd build them.
 
-### Personal trainer
-
-**Designed and agreed — this section is the spec, not a sketch.** It replaces
-`Personal/fitness/workout-guide.md` and `workout-log.md` in the vault and
-expands on both.
-
-**Two constraints before anything else.**
-
-- **The brief lives in `DATA_DIR`.** It carries personal health information —
-  the kind that has no business in a public repo, which is why this paragraph
-  doesn't enumerate it either. Not in the tool folder, not in a fixture, not in
-  a test, not in this file.
-- **Mid-session state has to survive a lock and a reload.** The chat version
-  never needed this because the conversation held it. A tool walking you
-  through exercise four of six, on a phone that sleeps between sets, does not
-  get to lose its place.
-
-#### The central move: the doc is three things wearing one hat
-
-The guide jams together **structured data pretending to be prose** (equipment,
-exercise pools, available weights, rotation order, the adjustment table),
-**actual policy** (the knee protocol, never-prescribe-cardio, bias toward
-progression, the density-set format) and **procedure** ("check the log, work out
-the rotation, log the results, archive anything over a fortnight").
-
-The procedure isn't a prompt at all — it's the tool. So: split the doc three
-ways, turn the procedure into code, keep the policy as a prompt, and make the
-data actually data. **Don't ship the whole brief to the model.**
-
-#### Equipment is the source of truth, and the ladders are derived
-
-The plates you own plus the bar generate every achievable load as a subset sum.
-**That list is computed and must never appear as a constant** — it regrows the
-day a heavier pair arrives, which is the whole point.
-
-Ladders are **per implement**, not global: the bar adds its own weight, the
-bench's leg attachment loads plates without it, and dumbbell movements depend
-on which pairs exist and whether the movement holds one or two. The existing
-vault log is inconsistent about exactly this — the same exercise appears at a
-weight only reachable on one ladder and later at one only reachable on the
-other — because prose lets it be and code can't.
-
-Every prescription snaps to a real rung, so the model cannot ask for a load you
-can't build.
-
-#### What the model does, and what code does
-
-**Model:** which exercises this session given recent history, what got skipped
-and the time budget; when a compound complex or a density set earns its slot;
-what to load a lift with no history from a related one; and **writing the
-instructions** — form cues and execution, including the knee cueing.
-
-**Code:** rotation, the adjustment-rule lookup, ladder snapping, PR detection,
-logging, archiving. The suggested weight is computed from your last rating and
-handed to the model as context — it may override, but only with a stated
-reason, and the result snaps either way.
-
-This is why the wait is bearable: the arithmetic is free and instant, and only
-the judgement costs seconds.
-
-**Generated instructions are saved into the session record**, so History replays
-exactly what you were told and re-reading an old session costs nothing.
-
-**Unlike the calorie estimator, a fallback is correct here.** Rotation plus pool
-plus the adjustment table can build a serviceable session with no model at all.
-When the estimator is down, _offer_ that — never silently. A dead model
-shouldn't cost a workout.
-
-#### Progress is the point, not a tab
-
-Importing the vault means Progress has real data on day one, so build it first.
-
-- **A GitHub-style day grid is the hero.** Hue by session type (so the rotation
-  becoming regular is the thing you watch form), intensity by how hard the
-  session was, averaged from the ratings. A month where legs got skipped is
-  visibly wrong in a way a single-colour grid would hide.
-- **Careful with the metaphor:** a daily contribution grid implies "every day
-  filled is better", which is false here — rest is the program. So the grid is
-  texture and the habit is measured in **weeks**.
-- **Three a week is the target; two keeps the streak.** The week reads 0/3 →
-  3/3, the streak breaks only below two, and a 3/3 week is marked distinctly on
-  the grid. Honest without being punishing.
-- **PRs get a board, not a chart per lift** — newest first, what it beat, how
-  long it stood — plus cumulative PRs over time as one line that goes up.
-  Per-lift detail is a drill-down, not the main view.
-- Two aggregate charts that aren't lift-specific: load moved per session, and
-  sessions per week.
-- **Tile:** the mini grid, this week's count, and what's next.
-
-#### Session flow
-
-Summary of the next session (type, exercises, weight × sets × reps, rough time)
-→ **Start** → one exercise per screen → rate it, which advances → after the last
-one it's stored, with a summary of what you did and any PRs.
-
-The happy path is **one tap per exercise**: weight and reps default to what was
-prescribed, and you only touch them if reality differed.
-
-**Ratings are words, four of them, and "Hard" is the target** — a working set
-should feel hard, so naming the target "just right" would be smoothing something
-that doesn't need it.
-
-| Rating   | Does                                   |
-| -------- | -------------------------------------- |
-| Too easy | up two rungs                           |
-| Easy     | up one rung                            |
-| Hard     | stay here — **target**                 |
-| Too hard | down one (**two** on knee-loaded work) |
-
-Each row shows its consequence, so the control teaches the rule instead of
-requiring you to remember it. The word maps to a canonical number underneath, so
-the imported log stays compatible and a finer scale could return without a
-migration.
-
-**The rating says how it felt; code picks the lever.** At the bar or dumbbell
-ceiling there is no next rung, so "Easy" adds reps instead of weight — which is
-what the brief already asks for, with no extra button.
-
-#### Voice mode
-
-A toggle in the session reads each exercise aloud as you land on it — name,
-load, sets and reps, then the cues — so the whole workout is one tap per
-exercise without looking at the screen.
-
-**Two providers, best-first.** **Piper** on the box when it's installed — local
-neural TTS, MIT, CPU-only, and much better than a stock system voice. It is a
-binary the server shells out to, exactly like the Claude CLI, so there is no
-node dependency and the deploy's pure-JavaScript rule is untouched. Failing
-that, the browser's own `speechSynthesis`, which is always there.
-
-The fallback isn't a lesser mode, it's the floor: voice is not allowed to stop
-working because a box got rebuilt.
-
-**Installing Piper is a manual step on the server**, like the Claude CLI — the
-deploy doesn't manage it. The server looks for the binary at
-`ZIMADASH_PIPER_BIN` or the usual bin directories, and for a `.onnx` voice at
-`ZIMADASH_PIPER_VOICE` or in `DATA_DIR/trainer/voices/`. Voices live in
-`DATA_DIR` so a deploy can't wipe them. Synthesised audio is cached there too,
-keyed by what was said, capped and pruned oldest-first — regenerable, but the
-cues repeat across sessions and re-synthesising them is waste.
-
-- **Per device, in `localStorage`**, like the theme — voice on in your hand and
-  off on the wall is a reasonable thing to want, and it is a UI preference
-  rather than state a deploy could destroy.
-- **iOS needs a user gesture before it will ever speak.** The **Start** tap is
-  that gesture, so prime the synthesiser there — not on arriving at the first
-  exercise, which is too late.
-- `getVoices()` is async and often empty on first call; wait for
-  `voiceschanged` before picking one.
-- A **replay** control, because a missed cue mid-set shouldn't need the screen.
-- **Known limit to test on a real phone:** iOS stops speech when the screen
-  locks, and may route it through the silent switch. Neither is fixable from a
-  web page — if it bites, the answer is keeping the screen awake during a
-  session, not fighting the audio stack.
-
-**Swap sits below the ratings, not among them** — it replaces the exercise
-rather than logging a set. It offers alternatives hitting the same muscle group,
-and for knee-loaded lifts leads with the low-stress options the brief names.
-Also needed: **skip with a reason**, and **add an exercise** before finishing,
-since the existing log shows exercises added on the fly.
-
-#### Settled
-
-- **Tool becomes the only home.** Import the vault once, never write back —
-  two-way sync between a markdown table and a JSON store is a project and a
-  corruption source. Ship a markdown **export** in the existing log format so
-  nothing is trapped.
-- **Whole session generated up front**, with a per-exercise escape hatch. One
-  wait beats six, the plan is visible, and the brief already says you adjust on
-  the go yourself.
-- **No offline handling.** Home gym, fine wifi — logging is a plain POST. Results
-  still persist per exercise as you tap, because the phone sleeps between sets;
-  the session merely _counts_ as finished at the end.
-- **Split the brief:** equipment and pools get UI editing (a dumbbell arriving
-  shouldn't need SSH), policy prose gets a textarea. Both in `DATA_DIR`.
-- **Don't port the fortnight window or the monthly archives** — vault
-  workarounds, both. And learn from the calorie tracker's open loose end: build
-  History with a real date range from day one.
-- **No `interactiveTile`.** Starting a workout opens a full screen, so the
-  ordinary whole-tile link is right.
-- Tabs: **Progress · Session · History · Settings**, landing on Progress unless
-  a session is active.
-
-#### Still open
-
-- [ ] Weight overlaps with the calorie tracker, but tools don't reach into each
-      other. Either the trainer asks for what it needs, or the overlap stays
-      unjoined
-- [ ] Imported ratings are ranges ("5-6"); the four-point scale is a single
-      value. Midpoint on import is the plan — check it doesn't distort the
-      early history
-- [ ] Three hues for session type need to survive both themes and hold up at
-      cell size, where colour is the only carrier. The legend and the
-      tap-through carry anything colour can't
-
-#### Phasing
-
-1. ~~Foundation and Progress~~ — **built.** Data model, equipment → ladders,
-   vault import, the grid, PR board, tile.
-2. ~~Session flow~~ — **built.** Rule-based planning, the walkthrough, one-tap
-   ratings, per-exercise persistence, swap/skip/adjust, and voice mode with the
-   Piper/browser fallback.
-3. ~~The model layer~~ — **built.** Exercise selection and written cues via the
-   Claude CLI, with the rule-based planner underneath as the offered fallback.
-
-#### How the model layer actually works
-
-The Claude CLI on the box, same bargain as the estimator. **No tools at all** —
-an empty `--allowed-tools` grant, because unlike a meal description this needs
-nothing it isn't handed.
-
-**The arithmetic is done before the model sees it.** Every candidate arrives with
-its full ladder, its last result, and the rule's computed suggestion spelled out
-("the rule says 65lb — up one rung"). The model's job is selection, format and
-cueing. Verified against the real log: it followed every suggestion exactly —
-45→65 on Bench and Row, 35→45 on Overhead Press, holds at 45 and 15 — and said
-so in its own reasoning.
-
-Validation: an invented exercise name is a hard failure (it means the pool was
-ignored, and dropping it silently would hand back a session missing a muscle
-group); a weight off the ladder is snapped, since the ladder is the authority
-and a rung out is a rounding slip. One retry, then the rules plan — offered and
-labelled, never substituted quietly.
-
-The Session tab renders the rules plan instantly and swaps the model's in when
-it lands, so opening the tab is never a blank minute.
-
-#### Voice: Piper is installed
-
-Binary at `~/opt/piper`, symlinked into `~/.local/bin/piper` — the tarball's
-libs resolve through `$ORIGIN`, so the symlink is enough. Voice
-`en_GB-alan-medium` in `DATA_DIR/trainer/voices/`. Roughly 0.8s to synthesise a
-cue and 0ms once cached; real-time factor about 0.09.
-
-Watch out for two things if this ever needs redoing: `extra/piper` in the Arch
-repos is a **gaming-mouse configurator**, an entirely different project, and the
-newer `piper1-gpl` ships Python wheels rather than a binary, which on Arch means
-venv juggling for no gain.
-
-#### Before it's really yours
-
-- [ ] Paste the guide's policy sections into Settings → The brief. Without it
-      the model plans from the pool and the knee flags alone — decent, but it
-      doesn't know the no-cardio rule, the progression bias, or the density-set
-      format.
-- [ ] Import `workout-log.md` on the box. Until then there's no history, so
-      every lift starts from scratch rather than from what you last rated.
-
-#### Learned while building phases one and two
-
-- **Zero is only a rung on a bodyweight ladder.** The knee override dropped a
-  goblet squat two rungs to 0lb — "hold no dumbbells", which is not a lighter
-  squat. Loaded implements now exclude it.
-- **Snapping belongs on a prescription, never on a record.** The importer was
-  rewriting a 35lb logged Leg Extension to 30 because 35 isn't on the plates
-  ladder. History is kept exactly as written and mismatches are flagged instead
-  — which correctly deduced a calf raise had been done with dumbbells that day.
-- **A ladder rung means different things to different movements.** 30lb is a
-  modest goblet squat and 15lb-per-hand on a lateral raise, which isn't hard,
-  it's impossible. New compounds start on the second rung, accessories on the
-  first.
-- **A catalogue entry needs two kinds of text.** `cue` is how to do it and gets
-  spoken; `note` is why it was chosen and never is. They were one field until
-  voice mode read "rotate this with flat bench rather than running both in one
-  session" aloud mid-set.
-- **The knee protocol is only spoken generically when a movement has no cue of
-  its own**, or the goblet squat says "knees over toes" twice in one breath.
-
 ### Homebridge
 
 A tool tile for the house.
@@ -394,9 +134,14 @@ view of the house, and handling an unreachable bridge. Those are different tools
 
 ### Habit tracker
 
-Still just an idea. A year of dots is the best wall visual on this list, and
-it's pure `event-driven` — but the design question isn't the data, it's whether
-the tile shows one habit large or every habit small.
+Still just an idea, but the trainer has now answered most of its unknowns: the
+year-of-dots grid exists, hued by category and shaded by intensity, with the
+weekly-target-and-streak counting that stops a daily grid implying every filled
+day is better. Whether that generalises is the open question — the trainer's
+grid reads a session shape, not an arbitrary habit, and tools don't reach into
+each other, so this would be a rebuild rather than an import.
+
+The design fork is unchanged: one habit large, or every habit small.
 
 ---
 
@@ -424,6 +169,11 @@ reasoning doesn't get re-litigated — don't pick one up until its trigger fires
   read. Two additions have been absorbed as optional fields with defaults, which
   is simpler than a migrate function. _Trigger:_ a schema change that has to
   rewrite stored data — then copy the pattern from the calorie settings.
+- **Join the trainer's weight data to the calorie tracker's.** Both hold body
+  weight and both care about it, but tools don't reach into each other and
+  breaking that for one convenience is a bad trade. _Trigger:_ wanting the
+  expenditure figure to account for training load, which is the only thing the
+  split actually costs.
 
 ---
 
@@ -532,5 +282,36 @@ Worth remembering for the next mobile check: **desktop Chrome never matches
 `(pointer: coarse)`**, so it renders fields at 12–14px — sizes that do not exist
 on a phone. Injecting the rule from `index.css` unconditionally is what surfaced
 all of the above; without it the first pass looked clean.
+
+**The trainer.** Replaces the vault's workout guide and log, and expands on
+both. The rules that govern it live in AGENTS.md under _The trainer_; this is
+what got built.
+
+The move that decided everything: **the guide was three things wearing one hat**
+— structured data pretending to be prose, actual policy, and procedure. The
+procedure became code, the policy stayed a prompt, and the data became data. So
+the equipment now generates every achievable load rather than a list being
+maintained by hand, and the model never sees most of the brief.
+
+- **Progress is the landing tab**, not one of four. A day grid hued by session
+  type and shaded by effort, a weekly 0/3 target with a streak that survives a
+  two-session week, a PR board with per-lift drill-down, and load-per-session.
+  The vault import meant it had real data on day one.
+- **Sessions run one exercise a screen**, one tap to rate and advance, with
+  swap, skip and adjust behind it. Results write on every tap, so a sleeping
+  phone can't lose a workout. Two exits: end early and keep what you did, or
+  abandon — which confirms, and says what it's about to destroy.
+- **Voice** reads each exercise out. Piper on the box when it's there, the
+  browser voice when it isn't.
+- **The model plans**, given the pool, the ladders and the rule's already-
+  computed suggestions. Verified: it followed every one of them. The rules
+  planner stays underneath as the offered fallback.
+
+Piper install, in case it needs redoing: the standalone `rhasspy/piper` tarball
+into `~/opt/piper`, symlinked into `~/.local/bin` — the bundled libs resolve
+through `$ORIGIN`, so a symlink is enough. **`extra/piper` in the Arch repos is
+a gaming-mouse configurator**, an entirely different project, and the newer
+`piper1-gpl` ships Python wheels rather than a binary, which on Arch means venv
+juggling for no gain.
 
 Phase numbering stopped here — everything above is a tool, not a phase.

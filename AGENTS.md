@@ -93,8 +93,8 @@ every rung fits inside a phone's eight columns so the same choice exists on
 every surface. It is a closed list rather than a drag-handle: a tile can only
 land on a size that was designed for. `SIZE_OPTIONS` has thirteen rungs and the
 picker is seven across by two down — fourteen cells, with the last left empty
-since the reset chip went. **Keep it two rows.** A two-row block is shorter than a 3-row tile at every unit
-size, so it still fits beside one; a third row pushes that threshold out to
+since the reset chip went. **Keep it two rows.** A two-row block is shorter
+than a 3-row tile at every unit size, so it still fits beside one; a third row pushes that threshold out to
 4-row tiles and drops most of the grid to below-placement. Widening is free by
 comparison — a phone sends the picker underneath on width alone whatever shape
 it is.
@@ -238,6 +238,74 @@ Replies are validated strictly — every configured field must come back as a
 plain number — with one retry, then an error. There is deliberately no fallback
 to logging a bare number when the estimator is down: a silently unestimated meal
 is worse than a visible failure.
+
+## The trainer
+
+The second tool to shell out to a model, and the rules differ from the
+estimator's in ways that matter.
+
+**The equipment generates everything.** Every achievable load is a subset sum
+over the plates and dumbbells in `trainer/settings.json`. **Never write a weight
+down as a constant** — a literal ladder would look right today and silently
+freeze the first time a heavier pair arrives, which is the one thing this design
+exists to prevent. Ladders are **per implement**: a bar lift carries the bar's
+weight, the bench's leg attachment takes plates without it, dumbbell work
+depends on which pairs exist and how many hands are on them.
+
+**Zero is only a rung on a bodyweight ladder.** On a loaded implement it means
+"pick up nothing", which is not a lighter goblet squat — it isn't one at all.
+
+**Snapping belongs on a prescription, never on a record.** What was lifted is
+kept exactly as logged even when it's off-ladder; a mismatch is flagged, because
+it usually means the movement was done on a different implement that day.
+Rewriting history to fit a model of the equipment is backwards.
+
+**Ratings are four words and "Hard" is the target** — a working set should feel
+hard. Each maps to a canonical number underneath, so imported history stays
+comparable and a finer scale could return without a migration. Two rules live in
+code rather than the prompt because they are arithmetic: knee-loaded work backs
+off **two** rungs rather than one, and at the top of a ladder there is no next
+rung so "Easy" adds reps instead of load.
+
+**A skipped exercise records that it didn't happen.** It never feeds the
+adjustment rule, a personal record, or a day's intensity — the planner walks
+past it to the last set actually performed.
+
+**The model does judgement, not sums.** Every candidate reaches it with its full
+ladder, its last result, and the rule's computed suggestion already spelled out.
+It chooses exercises, formats and cueing. It gets **no tools at all** — an empty
+grant, stricter than the estimator, because unlike a meal description this needs
+nothing it isn't handed. An invented exercise name is a hard failure; a weight
+off the ladder is snapped.
+
+**Unlike the estimator, a fallback here is correct** — rotation plus the pool
+plus the adjustment table build a serviceable session on their own, so a dead
+planner shouldn't cost a workout. It is always _offered_ and labelled, never
+substituted quietly; `plannedBy` records which one you got.
+
+**A catalogue entry needs two kinds of text.** `cue` is how to perform it and is
+spoken aloud; `note` is why it was chosen and never is. They were one field
+until voice mode read "rotate this with flat bench rather than running both in
+one session" out loud mid-set.
+
+**The brief in `DATA_DIR` carries personal health information.** It must never be
+written into this repo — not as a default, not as a fixture, not as a test, and
+not into `todos.md` either.
+
+### Voice
+
+`speechSynthesis` is the floor and is always available. **Piper** on the box is
+used when present — a local neural voice, found at `ZIMADASH_PIPER_BIN` or the
+usual bin directories, with a `.onnx` at `ZIMADASH_PIPER_VOICE` or in
+`DATA_DIR/trainer/voices/`. Voices and the synthesised-audio cache live in
+`DATA_DIR` so a deploy can't wipe them.
+
+It is optional on purpose: voice is not allowed to stop working because a box
+got rebuilt. Nothing about it is a node dependency, so the pure-JavaScript rule
+is untouched.
+
+**iOS will not speak or play audio without a prior user gesture**, so the Start
+tap primes both paths — arriving at the first exercise is far too late.
 
 ## Stack
 

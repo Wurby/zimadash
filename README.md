@@ -70,11 +70,17 @@ implementation. Copy it when starting a new one.
 There is no single global refresh interval — data is polled at the cadence it
 actually changes.
 
-| Tier           | Cadence | For                                            |
-| -------------- | ------- | ---------------------------------------------- |
-| `live`         | 5s      | System stats — anything genuinely in motion    |
-| `ambient`      | 60s+    | Weather, calendar — a minute stale is fine     |
-| `event-driven` | never   | Self-entered data; refetch after you mutate it |
+| Tier           | Cadence | For                                                |
+| -------------- | ------- | -------------------------------------------------- |
+| `live`         | 5s      | System stats — anything genuinely in motion        |
+| `ambient`      | 60s     | Elapsed-time readouts, calendar — a minute is fine |
+| `slow`         | 15m     | Weather — the source itself only moves that often  |
+| `event-driven` | never   | Self-entered data; refetch after you mutate it     |
+
+Pick the tier by what's on screen, not where the data came from: something you
+typed in yourself still belongs on a clock if what it renders as is elapsed
+time. And a tier only bounds the steady state — every tab fetches on mount and
+again on becoming visible, so a phone out of a pocket is always current.
 
 Polling pauses when the tab is hidden. The intervals live in
 `server/src/shared/tiers.ts` and are read by both the client and the server
