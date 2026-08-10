@@ -299,8 +299,51 @@ since the existing log shows exercises added on the fly.
 2. ~~Session flow~~ — **built.** Rule-based planning, the walkthrough, one-tap
    ratings, per-exercise persistence, swap/skip/adjust, and voice mode with the
    Piper/browser fallback.
-3. The model layer — exercise selection and written instructions on top. The
-   rule-based planner stays underneath as the offered fallback.
+3. ~~The model layer~~ — **built.** Exercise selection and written cues via the
+   Claude CLI, with the rule-based planner underneath as the offered fallback.
+
+#### How the model layer actually works
+
+The Claude CLI on the box, same bargain as the estimator. **No tools at all** —
+an empty `--allowed-tools` grant, because unlike a meal description this needs
+nothing it isn't handed.
+
+**The arithmetic is done before the model sees it.** Every candidate arrives with
+its full ladder, its last result, and the rule's computed suggestion spelled out
+("the rule says 65lb — up one rung"). The model's job is selection, format and
+cueing. Verified against the real log: it followed every suggestion exactly —
+45→65 on Bench and Row, 35→45 on Overhead Press, holds at 45 and 15 — and said
+so in its own reasoning.
+
+Validation: an invented exercise name is a hard failure (it means the pool was
+ignored, and dropping it silently would hand back a session missing a muscle
+group); a weight off the ladder is snapped, since the ladder is the authority
+and a rung out is a rounding slip. One retry, then the rules plan — offered and
+labelled, never substituted quietly.
+
+The Session tab renders the rules plan instantly and swaps the model's in when
+it lands, so opening the tab is never a blank minute.
+
+#### Voice: Piper is installed
+
+Binary at `~/opt/piper`, symlinked into `~/.local/bin/piper` — the tarball's
+libs resolve through `$ORIGIN`, so the symlink is enough. Voice
+`en_GB-alan-medium` in `DATA_DIR/trainer/voices/`. Roughly 0.8s to synthesise a
+cue and 0ms once cached; real-time factor about 0.09.
+
+Watch out for two things if this ever needs redoing: `extra/piper` in the Arch
+repos is a **gaming-mouse configurator**, an entirely different project, and the
+newer `piper1-gpl` ships Python wheels rather than a binary, which on Arch means
+venv juggling for no gain.
+
+#### Before it's really yours
+
+- [ ] Paste the guide's policy sections into Settings → The brief. Without it
+      the model plans from the pool and the knee flags alone — decent, but it
+      doesn't know the no-cardio rule, the progression bias, or the density-set
+      format.
+- [ ] Import `workout-log.md` on the box. Until then there's no history, so
+      every lift starts from scratch rather than from what you last rated.
 
 #### Learned while building phases one and two
 
