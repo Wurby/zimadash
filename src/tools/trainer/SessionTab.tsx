@@ -359,8 +359,11 @@ function Walkthrough({
               setVoice(next)
               setVoiceEnabled(next)
               if (next) {
+                // Prime only. Flipping `voice` re-runs the effect below, and
+                // that is what speaks — saying it here too fired two requests
+                // for the same sentence at once, which is what collided on the
+                // server and ended up with both voices talking.
                 speaker.prime()
-                void speaker.say(spoken)
               } else {
                 speaker.stop()
               }

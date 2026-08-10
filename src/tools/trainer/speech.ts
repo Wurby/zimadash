@@ -1,4 +1,4 @@
-import { api, apiBlob } from '../../lib/api'
+import { ApiError, api, apiBlob } from '../../lib/api'
 
 /**
  * Reading the session out loud.
@@ -49,6 +49,9 @@ export class Speaker {
   /** Null until we've asked the server whether it can do better than the
    *  browser. */
   private server: boolean | null = null
+  /** Bumped by every `stop()`, so a reply that arrives after it can tell that
+   *  it is no longer wanted. */
+  private generation = 0
 
   /**
    * Unlock audio while a real tap is on the stack.
@@ -86,7 +89,13 @@ export class Speaker {
 
   /** Speak, interrupting whatever was being said. */
   async say(text: string): Promise<void> {
+    // `stop()` bumps the generation, so anything already in flight is now
+    // superseded. Synthesis takes about a second, which is easily long enough
+    // to advance an exercise or toggle the voice underneath it — and a request
+    // that lands late must neither play nor fall back, or you get the previous
+    // exercise read over the current one.
     this.stop()
+    const mine = this.generation
 
     if (this.server !== false) {
       try {
@@ -94,16 +103,26 @@ export class Speaker {
           method: 'POST',
           body: JSON.stringify({ text }),
         })
+        if (mine !== this.generation) return
         this.server = true
         this.playBlob(blob)
         return
-      } catch {
-        // 503 means no local voice on this box. Remember it, so a whole session
-        // isn't spent asking a server that has already said no.
-        this.server = false
+      } catch (err) {
+        if (mine !== this.generation) return
+
+        // Only 503 means "this box has no local voice". Anything else is a
+        // blip, and treating every failure as permanent was what let a single
+        // hiccup switch engines mid-session — with the successful request still
+        // playing through the other one.
+        if (err instanceof ApiError && err.status === 503) {
+          this.server = false
+        } else {
+          return
+        }
       }
     }
 
+    if (mine !== this.generation) return
     this.speakLocally(text)
   }
 
@@ -130,7 +149,10 @@ export class Speaker {
     }
   }
 
+  /** Silence everything, and invalidate any synthesis still on its way. */
   stop(): void {
+    this.generation += 1
+
     try {
       window.speechSynthesis.cancel()
     } catch {
