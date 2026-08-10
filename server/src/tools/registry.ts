@@ -3,6 +3,7 @@ import calories from './calories/index.js';
 import countdowns from './countdowns.js';
 import lasttime from './lasttime.js';
 import scratch from './scratch.js';
+import trainer from './trainer/index.js';
 import weather from './weather.js';
 
 /**
@@ -20,4 +21,11 @@ export interface ServerTool {
  * place that changes. `index.ts` mounts the whole array in a loop and never
  * grows a branch per tool.
  */
-export const serverTools: ServerTool[] = [calories, countdowns, lasttime, scratch, weather];
+export const serverTools: ServerTool[] = [
+  calories,
+  countdowns,
+  lasttime,
+  scratch,
+  trainer,
+  weather,
+];

@@ -1,0 +1,14 @@
+{
+  "slug": "trainer",
+  "name": "Trainer",
+  "shortName": "Trainer",
+  "description": "Showing up, and getting stronger",
+  "themeColor": "#0c4a6e",
+  "backgroundColor": "#f8fafc",
+  "glyph": "▦",
+  "size": {
+    "sm": [6, 4],
+    "md": [6, 4],
+    "lg": [6, 4]
+  }
+}

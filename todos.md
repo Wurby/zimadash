@@ -215,6 +215,31 @@ migration.
 ceiling there is no next rung, so "Easy" adds reps instead of weight — which is
 what the brief already asks for, with no extra button.
 
+#### Voice mode
+
+A toggle in the session reads each exercise aloud as you land on it — name,
+load, sets and reps, then the cues — so the whole workout is one tap per
+exercise without looking at the screen.
+
+**`speechSynthesis`, the browser's own Web Speech API.** No dependency, no key,
+no metered call, nothing server-side, and it works on the phone. That is the
+same reasoning that put the estimator on the Claude CLI: use what's already
+there rather than adding a bill.
+
+- **Per device, in `localStorage`**, like the theme — voice on in your hand and
+  off on the wall is a reasonable thing to want, and it is a UI preference
+  rather than state a deploy could destroy.
+- **iOS needs a user gesture before it will ever speak.** The **Start** tap is
+  that gesture, so prime the synthesiser there — not on arriving at the first
+  exercise, which is too late.
+- `getVoices()` is async and often empty on first call; wait for
+  `voiceschanged` before picking one.
+- A **replay** control, because a missed cue mid-set shouldn't need the screen.
+- **Known limit to test on a real phone:** iOS stops speech when the screen
+  locks, and may route it through the silent switch. Neither is fixable from a
+  web page — if it bites, the answer is keeping the screen awake during a
+  session, not fighting the audio stack.
+
 **Swap sits below the ratings, not among them** — it replaces the exercise
 rather than logging a set. It offers alternatives hitting the same muscle group,
 and for knee-loaded lifts leads with the low-stress options the brief names.
@@ -259,7 +284,8 @@ since the existing log shows exercises added on the fly.
 
 1. Foundation and Progress — data model, equipment → ladders, vault import, the
    grid, PR board, tile. The fun part exists before anything else does.
-2. Session flow — rule-based planning, the walkthrough, ratings, persistence.
+2. Session flow — rule-based planning, the walkthrough, ratings, persistence,
+   and voice mode.
 3. The model layer — exercise selection and written instructions on top.
 
 ### Homebridge
