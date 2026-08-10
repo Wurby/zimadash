@@ -99,50 +99,168 @@ forks, not a spec. Roughly in the order I'd build them.
 
 ### Personal trainer
 
-Replaces `Personal/fitness/workout-guide.md` and `workout-log.md` in the vault,
-and expands on both. The guide is already a complete brief — session rotation
-(Upper A → Lower → Upper B → Lower), an exercise pool per day type, the
-equipment inventory and its loaded-weight ceilings, a knee protocol with its own
-override on the adjustment rule, the conditioning-without-cardio levers, and a
-0–10 difficulty scale that feeds forward into next session's load. The log is
-four sessions of exercise / weight / sets×reps / difficulty. All of that
-survives; what it doesn't have is a UI, and it's being read by a chat window
-that has to be handed the whole doc every time.
+**Designed and agreed — this section is the spec, not a sketch.** It replaces
+`Personal/fitness/workout-guide.md` and `workout-log.md` in the vault and
+expands on both.
 
-This is the estimator pattern pointed at generation rather than extraction, so
-the Claude CLI shell-out already in the calorie tracker is the mechanism, with
-the same several-second wait to design around.
+**Two constraints before anything else.**
 
-**Two constraints before anything else is decided:**
-
-- **The brief lives in `DATA_DIR`.** It carries health information — a GLP-1
-  protocol, a family injury history — and this repo is public. Not in the tool
-  folder, not in a fixture, not in a test.
+- **The brief lives in `DATA_DIR`.** It carries personal health information —
+  the kind that has no business in a public repo, which is why this paragraph
+  doesn't enumerate it either. Not in the tool folder, not in a fixture, not in
+  a test, not in this file.
 - **Mid-session state has to survive a lock and a reload.** The chat version
-  never needed this because the conversation held it. A tool walking you through
-  exercise four of six, on a phone that sleeps between sets, does not get to
-  lose its place.
+  never needed this because the conversation held it. A tool walking you
+  through exercise four of six, on a phone that sleeps between sets, does not
+  get to lose its place.
 
-- [ ] Does the vault stay the source of truth, does the tool become the only
-      home, or do they sync? "Replace" suggests the tool wins, but the archive
-      is years of history and nothing should eat it
-- [ ] Is the whole session generated up front, or one exercise at a time? Up
-      front means one wait and a plan you can see; per-exercise means the model
-      can react to the difficulty you just reported, at the cost of a wait
-      between every exercise
-- [ ] Is the brief editable in the UI, or a file you edit by hand? It's long,
-      it's prose, and most of it changes rarely — but the equipment list changes
-      the day a heavier dumbbell arrives
-- [ ] What the tile shows. Next session type is the obvious answer; a
-      per-lift progression chart is the one that earns the space
-- [ ] Does it need to work with no network mid-session? A garage or a basement
-      is exactly where this gets used, and a generated session that can't be
-      logged is worse than a paper note
-- [ ] The 2-week window and monthly archive files in the guide are a workaround
-      for living in a vault. A real store makes both moot — don't port them in
-- [ ] Weight and the GLP-1 context overlap with the calorie tracker, but tools
-      don't reach into each other. Either the trainer asks for what it needs, or
-      the overlap stays unjoined
+#### The central move: the doc is three things wearing one hat
+
+The guide jams together **structured data pretending to be prose** (equipment,
+exercise pools, available weights, rotation order, the adjustment table),
+**actual policy** (the knee protocol, never-prescribe-cardio, bias toward
+progression, the density-set format) and **procedure** ("check the log, work out
+the rotation, log the results, archive anything over a fortnight").
+
+The procedure isn't a prompt at all — it's the tool. So: split the doc three
+ways, turn the procedure into code, keep the policy as a prompt, and make the
+data actually data. **Don't ship the whole brief to the model.**
+
+#### Equipment is the source of truth, and the ladders are derived
+
+The plates you own plus the bar generate every achievable load as a subset sum.
+**That list is computed and must never appear as a constant** — it regrows the
+day a heavier pair arrives, which is the whole point.
+
+Ladders are **per implement**, not global: the bar adds its own weight, the
+bench's leg attachment loads plates without it, and dumbbell movements depend
+on which pairs exist and whether the movement holds one or two. The existing
+vault log is inconsistent about exactly this — the same exercise appears at a
+weight only reachable on one ladder and later at one only reachable on the
+other — because prose lets it be and code can't.
+
+Every prescription snaps to a real rung, so the model cannot ask for a load you
+can't build.
+
+#### What the model does, and what code does
+
+**Model:** which exercises this session given recent history, what got skipped
+and the time budget; when a compound complex or a density set earns its slot;
+what to load a lift with no history from a related one; and **writing the
+instructions** — form cues and execution, including the knee cueing.
+
+**Code:** rotation, the adjustment-rule lookup, ladder snapping, PR detection,
+logging, archiving. The suggested weight is computed from your last rating and
+handed to the model as context — it may override, but only with a stated
+reason, and the result snaps either way.
+
+This is why the wait is bearable: the arithmetic is free and instant, and only
+the judgement costs seconds.
+
+**Generated instructions are saved into the session record**, so History replays
+exactly what you were told and re-reading an old session costs nothing.
+
+**Unlike the calorie estimator, a fallback is correct here.** Rotation plus pool
+plus the adjustment table can build a serviceable session with no model at all.
+When the estimator is down, _offer_ that — never silently. A dead model
+shouldn't cost a workout.
+
+#### Progress is the point, not a tab
+
+Importing the vault means Progress has real data on day one, so build it first.
+
+- **A GitHub-style day grid is the hero.** Hue by session type (so the rotation
+  becoming regular is the thing you watch form), intensity by how hard the
+  session was, averaged from the ratings. A month where legs got skipped is
+  visibly wrong in a way a single-colour grid would hide.
+- **Careful with the metaphor:** a daily contribution grid implies "every day
+  filled is better", which is false here — rest is the program. So the grid is
+  texture and the habit is measured in **weeks**.
+- **Three a week is the target; two keeps the streak.** The week reads 0/3 →
+  3/3, the streak breaks only below two, and a 3/3 week is marked distinctly on
+  the grid. Honest without being punishing.
+- **PRs get a board, not a chart per lift** — newest first, what it beat, how
+  long it stood — plus cumulative PRs over time as one line that goes up.
+  Per-lift detail is a drill-down, not the main view.
+- Two aggregate charts that aren't lift-specific: load moved per session, and
+  sessions per week.
+- **Tile:** the mini grid, this week's count, and what's next.
+
+#### Session flow
+
+Summary of the next session (type, exercises, weight × sets × reps, rough time)
+→ **Start** → one exercise per screen → rate it, which advances → after the last
+one it's stored, with a summary of what you did and any PRs.
+
+The happy path is **one tap per exercise**: weight and reps default to what was
+prescribed, and you only touch them if reality differed.
+
+**Ratings are words, four of them, and "Hard" is the target** — a working set
+should feel hard, so naming the target "just right" would be smoothing something
+that doesn't need it.
+
+| Rating   | Does                                   |
+| -------- | -------------------------------------- |
+| Too easy | up two rungs                           |
+| Easy     | up one rung                            |
+| Hard     | stay here — **target**                 |
+| Too hard | down one (**two** on knee-loaded work) |
+
+Each row shows its consequence, so the control teaches the rule instead of
+requiring you to remember it. The word maps to a canonical number underneath, so
+the imported log stays compatible and a finer scale could return without a
+migration.
+
+**The rating says how it felt; code picks the lever.** At the bar or dumbbell
+ceiling there is no next rung, so "Easy" adds reps instead of weight — which is
+what the brief already asks for, with no extra button.
+
+**Swap sits below the ratings, not among them** — it replaces the exercise
+rather than logging a set. It offers alternatives hitting the same muscle group,
+and for knee-loaded lifts leads with the low-stress options the brief names.
+Also needed: **skip with a reason**, and **add an exercise** before finishing,
+since the existing log shows exercises added on the fly.
+
+#### Settled
+
+- **Tool becomes the only home.** Import the vault once, never write back —
+  two-way sync between a markdown table and a JSON store is a project and a
+  corruption source. Ship a markdown **export** in the existing log format so
+  nothing is trapped.
+- **Whole session generated up front**, with a per-exercise escape hatch. One
+  wait beats six, the plan is visible, and the brief already says you adjust on
+  the go yourself.
+- **No offline handling.** Home gym, fine wifi — logging is a plain POST. Results
+  still persist per exercise as you tap, because the phone sleeps between sets;
+  the session merely _counts_ as finished at the end.
+- **Split the brief:** equipment and pools get UI editing (a dumbbell arriving
+  shouldn't need SSH), policy prose gets a textarea. Both in `DATA_DIR`.
+- **Don't port the fortnight window or the monthly archives** — vault
+  workarounds, both. And learn from the calorie tracker's open loose end: build
+  History with a real date range from day one.
+- **No `interactiveTile`.** Starting a workout opens a full screen, so the
+  ordinary whole-tile link is right.
+- Tabs: **Progress · Session · History · Settings**, landing on Progress unless
+  a session is active.
+
+#### Still open
+
+- [ ] Weight overlaps with the calorie tracker, but tools don't reach into each
+      other. Either the trainer asks for what it needs, or the overlap stays
+      unjoined
+- [ ] Imported ratings are ranges ("5-6"); the four-point scale is a single
+      value. Midpoint on import is the plan — check it doesn't distort the
+      early history
+- [ ] Three hues for session type need to survive both themes and hold up at
+      cell size, where colour is the only carrier. The legend and the
+      tap-through carry anything colour can't
+
+#### Phasing
+
+1. Foundation and Progress — data model, equipment → ladders, vault import, the
+   grid, PR board, tile. The fun part exists before anything else does.
+2. Session flow — rule-based planning, the walkthrough, ratings, persistence.
+3. The model layer — exercise selection and written instructions on top.
 
 ### Homebridge
 
