@@ -281,10 +281,12 @@ function SwapPanel({
 function GuidePanel({
   exercise,
   speak,
+  onHush,
   onClose,
 }: {
   exercise: string
   speak: ((text: string) => void) | null
+  onHush: () => void
   onClose: () => void
 }) {
   const [guide, setGuide] = useState<ExerciseGuide | null>(null)
@@ -315,7 +317,10 @@ function GuidePanel({
         <h3 className="text-sm font-semibold">How to do it</h3>
         <button
           type="button"
-          onClick={onClose}
+          onClick={() => {
+            onHush()
+            onClose()
+          }}
           aria-label="Hide the detail"
           className={`border-line text-ink-dim hover:border-accent ${TOUCH} w-11 shrink-0 border text-xs`}
         >
@@ -365,13 +370,26 @@ function GuidePanel({
 
           <div className="flex flex-wrap gap-2">
             {speak && (
-              <button
-                type="button"
-                onClick={() => speak(spokenGuide(guide))}
-                className={`border-line text-ink-dim hover:border-accent ${TOUCH} border px-3 text-xs transition-colors`}
-              >
-                read it out
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => speak(spokenGuide(guide))}
+                  className={`border-line text-ink-dim hover:border-accent ${TOUCH} border px-3 text-xs transition-colors`}
+                >
+                  read it again
+                </button>
+                {/* A full guide takes the better part of two minutes to read.
+                    Toggling the voice off would stop it, but that is a setting
+                    rather than a control — being able to shut it up without
+                    changing anything needs its own button. */}
+                <button
+                  type="button"
+                  onClick={onHush}
+                  className={`border-line text-ink-dim hover:border-accent ${TOUCH} border px-3 text-xs transition-colors`}
+                >
+                  stop reading
+                </button>
+              </>
             )}
             <button
               type="button"
@@ -592,6 +610,7 @@ function Walkthrough({
         <GuidePanel
           exercise={exercise.name}
           speak={voice ? (text) => void speaker.say(text) : null}
+          onHush={() => speaker.stop()}
           onClose={() => setDetail(false)}
         />
       )}

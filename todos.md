@@ -307,6 +307,21 @@ maintained by hand, and the model never sees most of the brief.
   computed suggestions. Verified: it followed every one of them. The rules
   planner stays underneath as the offered fallback.
 
+**Detailed instructions, on request.** The cue on the exercise screen is one or
+two sentences, which is what you want between sets and thin when you're learning
+a movement. "How to do it" expands a full write-up — setup, each rep, and what
+commonly goes wrong — and reads it aloud when voice is on.
+
+Generated per **exercise**, not per session, and cached: a goblet squat is
+performed the same way in March as in August, so only the first ask waits on the
+model. The cache is keyed on the exercise plus a hash of the brief, so rewriting
+the brief invalidates guidance written under the old one rather than leaving
+advice that contradicts it. `rewrite` forces a new one.
+
+A full guide takes the better part of two minutes to read aloud, so it has its
+own stop — toggling the voice off would work but that's a setting, not a
+control.
+
 **Voice bug, found in use and fixed.** Piper and the browser voice spoke over
 each other. Four things in a chain: the voice toggle both spoke and flipped the
 state whose effect also speaks, so two requests went out for one sentence; both
