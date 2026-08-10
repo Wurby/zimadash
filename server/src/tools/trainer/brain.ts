@@ -330,3 +330,78 @@ export async function planWithModel(
     reasoning: parsed.reasoning,
   };
 }
+
+// ─── Detailed guidance ───────────────────────────────────────────────────────
+
+/**
+ * The long-form how-to for one movement.
+ *
+ * Separate from session planning because it is a property of the exercise
+ * rather than of today — which is what makes it worth caching. The brief is
+ * still included, since the knee protocol and the no-cardio rule shape how a
+ * movement should be described, and a hash of it decides when a cached guide
+ * has gone stale.
+ */
+function buildGuidePrompt(definition: ExerciseDef, policy: string, ladder: number[]): string {
+  return `Explain how to perform one strength exercise, for someone training alone at home.
+
+Exercise: ${definition.name}
+Loaded with: ${definition.implement.replace('-', ' ')}${
+    ladder.length > 1 ? ` (available loads: ${ladder.join(', ')} lb)` : ''
+  }
+${definition.kneeLoaded ? 'This movement loads the knee. The cueing must cover controlling the descent and keeping the knees tracking over the toes.\n' : ''}${
+    definition.cue ? `The short cue already in use: ${definition.cue}\n` : ''
+  }${policy ? `\nTheir brief, which governs how this should be described:\n\n${policy}\n` : ''}
+Write it for someone stood in front of the weight about to lift, not for a
+textbook. Assume no spotter, no rack, and no coach in the room. It may be read
+aloud, so write plain sentences — no markdown, no lists inside a string, no
+abbreviations that only make sense on a page.
+
+Reply with a single JSON object and nothing else — no prose, no code fence:
+
+{
+  "setup": "<one or two sentences: how to get into position before the first rep>",
+  "steps": ["<each rep, in order — three to five short sentences>"],
+  "watchFor": ["<two to four things that commonly go wrong, and what to do instead>"]
+}`;
+}
+
+function parseGuide(reply: string): { setup: string; steps: string[]; watchFor: string[] } {
+  const match = reply.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('unparseable');
+
+  const body = JSON.parse(match[0]) as Record<string, unknown>;
+  const list = (value: unknown, cap: number): string[] =>
+    Array.isArray(value)
+      ? value
+          .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+          .map((entry) => entry.trim().slice(0, 400))
+          .slice(0, cap)
+      : [];
+
+  const setup = typeof body.setup === 'string' ? body.setup.trim().slice(0, 600) : '';
+  const steps = list(body.steps, 6);
+
+  // A guide with no setup or no steps is not a guide — better to fail and let
+  // the retry run than to expand a panel onto an empty screen mid-set.
+  if (!setup || steps.length === 0) throw new Error('incomplete guide');
+
+  return { setup, steps, watchFor: list(body.watchFor, 5) };
+}
+
+export async function explainExercise(
+  definition: ExerciseDef,
+  policy: string,
+  inventory: Inventory,
+): Promise<{ setup: string; steps: string[]; watchFor: string[] }> {
+  const prompt = buildGuidePrompt(definition, policy, loadLadder(inventory, definition.implement));
+
+  return serialise(async () => {
+    try {
+      return parseGuide(await run(prompt));
+    } catch (first) {
+      if (first instanceof Error && first.message === 'the planner did not respond') throw first;
+      return parseGuide(await run(prompt));
+    }
+  });
+}

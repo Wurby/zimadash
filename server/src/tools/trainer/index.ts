@@ -12,6 +12,7 @@ import {
   volumeOf,
   weekKey,
   weeklySummaries,
+  type ExerciseGuide,
   type Implement,
   type Session,
 } from '../../shared/trainer.js';
@@ -28,7 +29,8 @@ import {
 } from './storage.js';
 import { parseVaultLog } from './importVault.js';
 import { planSession } from './planner.js';
-import { planWithModel } from './brain.js';
+import { explainExercise, planWithModel } from './brain.js';
+import { findGuide, policyHash, saveGuide } from './guides.js';
 import { speechCapability, synthesise } from './speech.js';
 
 /**
@@ -578,6 +580,51 @@ router.delete('/sessions/:id', (req, res) => {
 
   removeSession(session.id);
   res.json({ ok: true });
+});
+
+// ─── Detailed guidance ───────────────────────────────────────────────────────
+
+/**
+ * The long-form how-to for one movement.
+ *
+ * Generated once and cached, because it describes the exercise rather than
+ * today's session — so the first tap waits and every one after is instant.
+ * `?refresh=1` writes a new one, for when the old reads badly.
+ */
+router.get('/exercises/:name/guide', async (req, res) => {
+  const settings = readSettings();
+  const name = decodeURIComponent(req.params.name);
+
+  const definition = settings.catalogue.find((entry) => entry.name === name);
+  if (!definition) {
+    res.status(404).json({ error: 'that exercise is not in the catalogue' });
+    return;
+  }
+
+  if (req.query.refresh !== '1') {
+    const cached = findGuide(name, settings.policy);
+    if (cached) {
+      res.json({ guide: cached, cached: true });
+      return;
+    }
+  }
+
+  try {
+    const written = await explainExercise(definition, settings.policy, settings.inventory);
+    const guide: ExerciseGuide = {
+      exercise: name,
+      ...written,
+      policyHash: policyHash(settings.policy),
+      at: Date.now(),
+    };
+
+    saveGuide(guide);
+    res.json({ guide, cached: false });
+  } catch (err) {
+    // No rules fallback exists for prose, so this is simply unavailable — the
+    // short cue is still on screen and remains the thing you actually need.
+    res.status(503).json({ error: (err as Error).message });
+  }
 });
 
 // ─── Voice ───────────────────────────────────────────────────────────────────

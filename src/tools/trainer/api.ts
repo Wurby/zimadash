@@ -1,6 +1,7 @@
 import type {
   DayCell,
   ExerciseDef,
+  ExerciseGuide,
   Implement,
   Inventory,
   PersonalRecord,
@@ -172,4 +173,18 @@ export function finishSession(
 
 export function abandonSession(id: string): Promise<{ ok: boolean }> {
   return api(`${BASE}/sessions/${id}`, { method: 'DELETE' })
+}
+
+/**
+ * The long-form how-to for a movement.
+ *
+ * Cached server-side per exercise, so only the first ask waits on the model.
+ * `refresh` writes a new one when the old reads badly.
+ */
+export function getGuide(
+  exercise: string,
+  refresh = false,
+): Promise<{ guide: ExerciseGuide; cached: boolean }> {
+  const suffix = refresh ? '?refresh=1' : ''
+  return api(`${BASE}/exercises/${encodeURIComponent(exercise)}/guide${suffix}`)
 }

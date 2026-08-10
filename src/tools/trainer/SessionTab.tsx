@@ -4,6 +4,8 @@ import {
   RATINGS,
   TARGET_RATING,
   spokenFor,
+  spokenGuide,
+  type ExerciseGuide,
   type PersonalRecord,
   type Rating,
   type Session,
@@ -15,6 +17,7 @@ import {
   finishSession,
   getActive,
   getAlternatives,
+  getGuide,
   getPlan,
   planWithModel,
   recordResult,
@@ -266,6 +269,130 @@ function SwapPanel({
   )
 }
 
+/**
+ * The long-form how-to, on request.
+ *
+ * The cue on the screen above is deliberately one or two sentences — that is
+ * what you want between sets. This is what you want the first time you attempt
+ * a movement, so it is a tap rather than always-on clutter.
+ *
+ * Cached server-side per exercise, so only the very first ask waits.
+ */
+function GuidePanel({
+  exercise,
+  speak,
+  onClose,
+}: {
+  exercise: string
+  speak: ((text: string) => void) | null
+  onClose: () => void
+}) {
+  const [guide, setGuide] = useState<ExerciseGuide | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    getGuide(exercise)
+      .then((found) => {
+        if (!alive) return
+        setGuide(found.guide)
+        speak?.(spokenGuide(found.guide))
+      })
+      .catch((err: unknown) => {
+        if (alive) setError(err instanceof Error ? err.message : 'could not write that up')
+      })
+    return () => {
+      alive = false
+    }
+    // `speak` is intentionally excluded: re-reading the guide because the voice
+    // toggle changed would talk over whatever is being said now.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exercise])
+
+  return (
+    <div className="border-line bg-surface mt-3 border p-3">
+      <div className="flex items-start justify-between gap-2">
+        <h3 className="text-sm font-semibold">How to do it</h3>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Hide the detail"
+          className={`border-line text-ink-dim hover:border-accent ${TOUCH} w-11 shrink-0 border text-xs`}
+        >
+          ✕
+        </button>
+      </div>
+
+      {!guide && !error && (
+        <p className="text-ink-dim mt-2 text-xs">writing it up — this happens once…</p>
+      )}
+      {error && <p className="text-danger mt-2 text-xs">{error}</p>}
+
+      {guide && (
+        <div className="mt-3 space-y-3 text-sm">
+          <div>
+            <p className="text-ink-dim text-[0.65rem] tracking-wide uppercase">Setup</p>
+            <p className="mt-1">{guide.setup}</p>
+          </div>
+
+          <div>
+            <p className="text-ink-dim text-[0.65rem] tracking-wide uppercase">Each rep</p>
+            <ol className="mt-1 space-y-1">
+              {guide.steps.map((step, index) => (
+                <li key={step} className="flex gap-2">
+                  <span className="text-ink-dim shrink-0 font-mono text-xs tabular-nums">
+                    {index + 1}
+                  </span>
+                  <span>{step}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          {guide.watchFor.length > 0 && (
+            <div>
+              <p className="text-ink-dim text-[0.65rem] tracking-wide uppercase">Watch for</p>
+              <ul className="mt-1 space-y-1">
+                {guide.watchFor.map((watch) => (
+                  <li key={watch} className="flex gap-2">
+                    <span className="text-ink-dim shrink-0">·</span>
+                    <span>{watch}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-2">
+            {speak && (
+              <button
+                type="button"
+                onClick={() => speak(spokenGuide(guide))}
+                className={`border-line text-ink-dim hover:border-accent ${TOUCH} border px-3 text-xs transition-colors`}
+              >
+                read it out
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setGuide(null)
+                setError(null)
+                getGuide(exercise, true)
+                  .then((found) => setGuide(found.guide))
+                  .catch(() => setError('could not rewrite that'))
+              }}
+              className={`border-line text-ink-dim hover:border-accent ${TOUCH} border px-3 text-xs transition-colors`}
+            >
+              rewrite
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function Walkthrough({
   session,
   speaker,
@@ -286,6 +413,7 @@ function Walkthrough({
   const [busy, setBusy] = useState(false)
   const [swapping, setSwapping] = useState(false)
   const [adjusting, setAdjusting] = useState(false)
+  const [detail, setDetail] = useState(false)
   const [override, setOverride] = useState<{ weightLb?: number; sets?: number; reps?: number }>({})
 
   const spoken = exercise ? spokenFor(exercise, index, session.exercises.length) : ''
@@ -435,6 +563,16 @@ function Walkthrough({
         </button>
         <button
           type="button"
+          onClick={() => setDetail((was) => !was)}
+          aria-expanded={detail}
+          className={`${TOUCH} border px-3 text-xs transition-colors ${
+            detail ? 'border-accent text-accent' : 'border-line text-ink-dim hover:border-accent'
+          }`}
+        >
+          how to do it
+        </button>
+        <button
+          type="button"
           onClick={() => setSwapping((was) => !was)}
           className={`border-line text-ink-dim hover:border-accent ${TOUCH} border px-3 text-xs transition-colors`}
         >
@@ -449,6 +587,14 @@ function Walkthrough({
           skip
         </button>
       </div>
+
+      {detail && (
+        <GuidePanel
+          exercise={exercise.name}
+          speak={voice ? (text) => void speaker.say(text) : null}
+          onClose={() => setDetail(false)}
+        />
+      )}
 
       {swapping && (
         <SwapPanel

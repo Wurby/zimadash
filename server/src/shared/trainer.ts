@@ -368,6 +368,38 @@ export interface Session {
   importNotes?: string[];
 }
 
+// ─── Detailed guidance ───────────────────────────────────────────────────────
+
+/**
+ * The long-form how-to for one movement.
+ *
+ * Kept apart from a session's `instructions`, which are the short cue for
+ * *today* and reference today's load. This is a property of the exercise, so it
+ * is generated once and reused — the goblet squat is performed the same way in
+ * March as in August.
+ */
+export interface ExerciseGuide {
+  exercise: string;
+  setup: string;
+  steps: string[];
+  watchFor: string[];
+  /** Regenerated when the brief changes, since the brief shapes the cueing. */
+  policyHash: string;
+  at: number;
+}
+
+/** Read aloud, when voice is on and you've asked for the detail. */
+export function spokenGuide(guide: ExerciseGuide): string {
+  return [
+    `${guide.exercise}.`,
+    `Setup. ${guide.setup}`,
+    ...guide.steps.map((step, index) => `Step ${index + 1}. ${step}`),
+    guide.watchFor.length > 0 ? `Watch for. ${guide.watchFor.join(' ')}` : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
 // ─── Speech ──────────────────────────────────────────────────────────────────
 
 /**
