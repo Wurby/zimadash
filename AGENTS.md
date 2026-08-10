@@ -52,7 +52,10 @@ hole a larger one couldn't fit.
 **You own both the size and the position.** A tool declares a size per surface
 in `meta.json`, but that is only where it starts — in edit mode, tapping a tool
 tile or a badge opens a picker of sizes beside it and your choice wins from then
-on. The picker's reset chip hands the thing back to its declared size.
+on. **A first pick is one-way**: there is no reset back to the declared size, so
+a declared size that isn't a rung of `SIZE_OPTIONS` cannot be returned to. Two
+are off-ladder today, which is a known wart — see the sizing entry in
+`todos.md`. Declare new tools on the ladder.
 
 Actions, the theme toggle and the edit button are not resizable. They are a
 single icon, and one unit is what an icon is.
@@ -82,15 +85,15 @@ switching form remounts it and it re-measures.
 
 The stats badge's expanded default (`8x6`) is deliberately wider than any rung
 of `SIZE_OPTIONS`: that readout was measured to fit at that size, and shrinking
-it brings back the scrolling it was built to avoid. Reset is how you get back to
-it.
+it brings back the scrolling it was built to avoid. With the reset chip gone,
+picking any size for the expanded form is a one-way door away from it.
 
 The ladder runs from 1x1 — one unit, the size of a quick action — up to 6x6, and
 every rung fits inside a phone's eight columns so the same choice exists on
 every surface. It is a closed list rather than a drag-handle: a tile can only
 land on a size that was designed for. `SIZE_OPTIONS` has thirteen rungs and the
-picker is seven across by two down, which is exactly those plus the reset chip.
-**Keep it two rows.** A two-row block is shorter than a 3-row tile at every unit
+picker is seven across by two down — fourteen cells, with the last left empty
+since the reset chip went. **Keep it two rows.** A two-row block is shorter than a 3-row tile at every unit
 size, so it still fits beside one; a third row pushes that threshold out to
 4-row tiles and drops most of the grid to below-placement. Widening is free by
 comparison — a phone sends the picker underneath on width alone whatever shape

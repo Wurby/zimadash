@@ -8,13 +8,19 @@ import { GRID_GAP, SIZE_OPTIONS, type Span } from '@shared/layout'
  * same size as the smallest thing you can pick — so the picker is built out of
  * the dashboard's own measurements rather than its own set of numbers.
  *
- * Seven across and two down is not arbitrary: the thirteen sizes plus a reset
- * come to exactly fourteen cells, and **staying two rows tall is what keeps the
- * placement good.** A block of `2u + 26` is shorter than a 3-row tile at every
- * unit size, so it still earns the side; a third row would push that threshold
- * out to 4-row tiles and drop most of the grid to below-placement. Growing
- * sideways costs nothing by comparison, because a phone sends the picker
- * underneath on width alone whatever shape it is.
+ * Seven across and two down is not arbitrary: **staying two rows tall is what
+ * keeps the placement good.** A block of `2u + 26` is shorter than a 3-row tile
+ * at every unit size, so it still earns the side; a third row would push that
+ * threshold out to 4-row tiles and drop most of the grid to below-placement.
+ * Growing sideways costs nothing by comparison, because a phone sends the
+ * picker underneath on width alone whatever shape it is.
+ *
+ * Thirteen sizes across fourteen cells leaves the last one empty. It used to
+ * hold a reset chip back to the tool's declared size — a bare `↺` whose `title`
+ * never fires on touch, for an opinion that stops being worth a cell the moment
+ * you have one of your own. **The consequence is that a declared size which
+ * isn't on the ladder can't be returned to once you pick something.** Two are
+ * off-ladder today; see the sizing entry in todos.md.
  *
  * **Placement.** Beside the tile when the block is no taller than the tile is,
  * so it never hangs over the tile's neighbours; below it otherwise. Left
@@ -74,7 +80,6 @@ export function SizePicker({
   item,
   unit,
   value,
-  declared,
   onPick,
   onClose,
 }: {
@@ -84,9 +89,7 @@ export function SizePicker({
   unit: number
   /** The chosen size for this surface, or null while the tool's own stands. */
   value: Span | null
-  /** What the tool asked for here — what reset goes back to. */
-  declared: Span
-  onPick: (span: Span | null) => void
+  onPick: (span: Span) => void
   onClose: () => void
 }) {
   const box = useRef<HTMLDivElement>(null)
@@ -190,21 +193,6 @@ export function SizePicker({
           </button>
         )
       })}
-
-      <button
-        type="button"
-        onClick={() => onPick(null)}
-        aria-pressed={value === null}
-        aria-label={`Default size (${label(declared)})`}
-        title={`Default (${label(declared)})`}
-        className={`border text-sm leading-none transition-colors ${
-          value === null
-            ? 'border-accent text-accent font-bold'
-            : 'border-line text-ink-dim hover:border-accent hover:text-ink'
-        }`}
-      >
-        {'↺'}
-      </button>
     </div>
   )
 }

@@ -8,7 +8,6 @@ import {
   overrideSpan,
   resolveSpan,
   sizeKey,
-  spanFor,
   type SizeBySurface,
   type Span,
 } from '@shared/layout'
@@ -275,7 +274,6 @@ export function Home() {
           item={sizing}
           unit={geometry.unit}
           value={overrideSpan(sizes[keyFor(sizing)], geometry.breakpoint)}
-          declared={spanFor(declaredFor(sizing), geometry.breakpoint)}
           onPick={(span) => resize(keyFor(sizing), geometry.breakpoint, span)}
           onClose={() => setSizing(null)}
         />

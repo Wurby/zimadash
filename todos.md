@@ -34,6 +34,52 @@ best-first.
 
 ---
 
+## Sizing needs a rethink
+
+Not an hour's work and not a bug — the model itself wants re-deciding, so this
+gets a brainstorm before any code. What's here is the state of play, not a plan.
+
+**Where it stands.** `SIZE_OPTIONS` is a closed ladder of thirteen rungs, from
+1x1 to 6x6, every one fitting inside a phone's eight columns. Sizes are stored
+per surface; the order is one shared list. The picker is seven across by two
+down and **must stay two rows** — a two-row block is shorter than a 3-row tile
+at every unit size, so it still fits beside one, and a third row drops most of
+the grid to below-placement.
+
+**What just changed.** The reset chip is gone. It was a bare `↺` whose `title`
+never fires on touch, for the tool's opinion about a size you've already
+overridden. Removing it means **a first pick is now one-way** — nothing clears
+an override, so a declared size that isn't a rung can't be returned to.
+
+**The two that are off the ladder.** The stats badge's expanded `8x6`, measured
+to fit its readout without scrolling, and calories' `8x5` on a phone. Both are
+now unreachable once their tile is resized. Last Time, Countdowns and Weather
+were deliberately declared on-ladder to avoid adding to this.
+
+Things worth settling in the brainstorm, roughly in the order they'd change the
+answer:
+
+- [ ] Is a closed ladder still right? It buys "a tile only lands on a size it
+      was designed for", and it costs any size nobody thought of. A drag-handle
+      with snapping is the obvious alternative and a real departure
+- [ ] If the ladder stays: does it need a full-width rung? Everything on it caps
+      at 6 of a phone's 8 columns, so **no tile can currently fill a phone's
+      width** — which is why both off-ladder defaults are 8 wide. That may be
+      the actual bug here
+- [ ] Fourteen cells now hold thirteen rungs. One free cell, and widening the
+      picker is explicitly cheap while heightening it isn't — so there is room
+      for one or two more rungs without touching the placement maths
+- [ ] Should a tool declaring an off-ladder size be an error at startup, the way
+      a slug mismatch is? It would have caught both of these
+- [ ] What happens on a surface a size was never chosen for. Sizes are per
+      surface by design, but that means picking on a phone leaves the wall on
+      the declared size — correct, and confusing the first time it happens
+- [ ] Whether the tile-clipping problem is a sizing problem in disguise. Tool
+      tiles below about 3x2 are just the title band, so a third of the ladder is
+      unusable for tools while being the whole point of it for badges
+
+---
+
 ## New tools
 
 Each one needs a grill-me before building — what's here is the shape and the
