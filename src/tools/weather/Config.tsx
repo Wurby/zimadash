@@ -164,10 +164,7 @@ export function Config() {
 
   return (
     <div className="space-y-6">
-      <LocationPicker
-        current={settings.location}
-        onPick={(location) => save({ location })}
-      />
+      <LocationPicker current={settings.location} onPick={(location) => save({ location })} />
 
       <section>
         <h2 className="text-sm font-semibold tracking-tight">Units</h2>

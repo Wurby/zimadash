@@ -31,6 +31,11 @@ best-first.
       1x1 and 2x1 clip to nothing readable. The ladder goes that small for the
       badges' sake, so the fix is at the tile end: either a per-item minimum, or
       `ToolTile` drops the band below some span and shows the glyph alone
+- [ ] The back arrow in `ToolShell` measures 34x34, under the 44px touch
+      minimum — and it is the only way out of a tool, on a surface that is
+      entirely touch. It's shared, so this lands on calories and scratch as much
+      as the new tools. The config screens were brought up to 44 during the
+      mobile pass; this was left alone only because it sits outside those tools
 
 ---
 
@@ -256,15 +261,55 @@ Making that possible added `interactiveTile` to the tool contract — opt in and
 the title band carries the link so the tile body can take its own taps, rather
 than the whole tile being one link. Tools that don't opt in are untouched.
 
-Two things fell out of building them that are now written into AGENTS.md:
+Three things fell out of building them that are now written into AGENTS.md:
 
-- **Tier by what's on screen, not where the data came from.** All three hold
-  self-entered or rarely-changing data, and all three are `ambient`, because
-  what they render is elapsed time — it moves while the record sits still, and a
-  countdown has to have rolled over by morning on the wall display.
+- **Tier by what's on screen, not where the data came from.** Last Time and
+  Countdowns hold self-entered data and are still `ambient`, because what they
+  render is elapsed time — it moves while the record sits still, and a countdown
+  has to have rolled over by morning on the wall display.
+- **A fourth tier, `slow` (15m), for when the _source_ is the bound.** The cache
+  rule cuts both ways: a server cache may not be slower than the client tier it
+  feeds, so putting weather on `ambient` forced every upstream fetch to 60s — about
+  1,400 Open-Meteo calls a day for a forecast that updates every few minutes.
+  Moving it to `slow` took that to 96. Safe because a tier only bounds the steady
+  state: every tab still fetches on mount and on becoming visible, so a phone out
+  of a pocket is current regardless.
 - **Open-Meteo's `timezone=auto` returns local times with no offset on them**,
   which `new Date()` reads in the viewer's zone. The offset is resolved
   server-side into a real instant once, on the way through. Verified against
   London and Tokyo landing on the same UTC instant.
+
+**Then a browser pass over all three, on a phone viewport.** Confirmed working:
+`interactiveTile` logs rather than navigating; tap-and-undo removes exactly the
+newest entry and the 5-second window expires on its own; all three age states
+render distinctly in both themes; a learned interval was picked up off a four-tap
+cadence; countdowns coloured by nearness, sank the passed one, enforced the cap
+and rolled the yearly one to next year; geocoding, the hourly strip's start hour
+and the 5-/10-day mutual exclusion all behaved. Zero console errors.
+
+What it caught, all since fixed:
+
+- **`humanElapsed` returns phrases, not durations.** Dropping it into an "… ago"
+  frame produced "last never ago" and "last just now ago". `humanLast` now owns
+  the whole phrase, and the tile's `aria-label` with it.
+- **`humanInterval` rounded 30 days to "4w"** while the field beside it read 30,
+  and the pin button said "pin 4w" while pinning 30. Weeks only on exact
+  division now.
+- **Every control was under the 44px touch minimum** — checkbox 13x13, delete
+  27x26, buttons ~34 tall. All three config screens now carry an explicit
+  `min-h-11` floor.
+- **Captions sat beside their fields, not above** — inconsistently, since an
+  inline span only wraps when its input happens to be full-width. "Name" was
+  right by accident and "Every"/"Date" were wrong.
+- **Countdowns' add form collapsed on a phone**, squeezing Name to about 30px —
+  narrower than its own placeholder.
+- **The config band was 24px wide.** On a normal tile the whole thing is the
+  link so the strip's width is decoration; on an interactive tile it is the only
+  way in. Widened to 44 for those only.
+
+Worth remembering for the next mobile check: **desktop Chrome never matches
+`(pointer: coarse)`**, so it renders fields at 12–14px — sizes that do not exist
+on a phone. Injecting the rule from `index.css` unconditionally is what surfaced
+all of the above; without it the first pass looked clean.
 
 Phase numbering stopped here — everything above is a tool, not a phase.

@@ -129,9 +129,7 @@ export interface RainOutlook {
  * tell those apart.
  */
 export function rainOutlook(hours: WeatherHour[], now: number): RainOutlook {
-  const upcoming = hours
-    .filter((hour) => hour.at >= now - 3_600_000)
-    .slice(0, RAIN_WINDOW_HOURS);
+  const upcoming = hours.filter((hour) => hour.at >= now - 3_600_000).slice(0, RAIN_WINDOW_HOURS);
 
   if (upcoming.length === 0) return { willRain: false, peakChance: 0, startsInHours: null };
 

@@ -42,9 +42,7 @@ export function isValidDay(iso: string): boolean {
   const [year, month, day] = iso.split('-').map(Number) as [number, number, number];
   const date = new Date(year, month - 1, day);
   // Round-trips only if the day actually exists — this is what rejects 31 Feb.
-  return (
-    date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day
-  );
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
 }
 
 /**

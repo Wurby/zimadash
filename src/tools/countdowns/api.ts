@@ -13,11 +13,7 @@ export function getCountdowns(): Promise<CountdownList> {
   return api<CountdownList>(BASE)
 }
 
-export function addCountdown(
-  label: string,
-  date: string,
-  yearly: boolean,
-): Promise<CountdownList> {
+export function addCountdown(label: string, date: string, yearly: boolean): Promise<CountdownList> {
   return api<CountdownList>(`${BASE}/items`, {
     method: 'POST',
     body: JSON.stringify({ label, date, yearly }),

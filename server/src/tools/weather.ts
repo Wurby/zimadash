@@ -200,7 +200,9 @@ interface OpenMeteoResponse {
   };
 }
 
-async function fetchReport(location: NonNullable<WeatherSettings['location']>): Promise<WeatherReport> {
+async function fetchReport(
+  location: NonNullable<WeatherSettings['location']>,
+): Promise<WeatherReport> {
   const url = new URL(FORECAST_HOST);
   url.searchParams.set('latitude', String(location.latitude));
   url.searchParams.set('longitude', String(location.longitude));
@@ -290,7 +292,9 @@ router.get('/', async (_req, res) => {
   } catch (err) {
     // A stale temperature that looks current is worse than a gap, so a failed
     // refresh is reported as one rather than quietly serving the old entry.
-    res.status(502).json({ error: `could not reach the weather service: ${(err as Error).message}` });
+    res
+      .status(502)
+      .json({ error: `could not reach the weather service: ${(err as Error).message}` });
   }
 });
 

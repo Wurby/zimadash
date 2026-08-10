@@ -297,6 +297,29 @@ want smaller — that class is the opt-out. **Size dense fields for what they
 become**: a `w-14` box holding four monospace characters at 12px only holds four
 at 16px too, so widen it.
 
+**Interactive controls get a 44px floor, unconditionally.** Both surfaces this
+runs on are touch — the phone and the wall tablet — so a desktop pointer is the
+odd one out and doesn't get to set the sizes. A bare checkbox is 13px and a
+text-sized button about 34, so they carry `min-h-11` (plus a width where the
+control is square) rather than inheriting from the type. Put a checkbox at
+`size-5` inside a padded `label` so the whole row is the target instead of a
+13px square. The three tool config screens are the worked example.
+
+Tiles are the exception that can't comply: a tile's rows divide whatever height
+the grid hands down, so a declared size silently sets its tap targets. That
+tension is unresolved — see the sizing entry in `todos.md`.
+
+**A caption above a field needs `block` on the span.** A bare inline span sits
+_beside_ its input and only appears to wrap when the input happens to be
+full-width, so a form ends up captioning some fields above and others to the
+left without anyone choosing that.
+
+**Checking any of this in a desktop browser does not work by default.** Nothing
+on a desktop matches `(pointer: coarse)`, so fields render at the 12–14px they
+will never be on a real device and the layout looks fine. Inject that rule
+unconditionally before judging a mobile screen, or you are reviewing a rendering
+that does not exist on either surface this project targets.
+
 **Corners are square.** No `rounded-*` anywhere, and no `rx` on the SVGs. If you
 add a surface, it gets hard edges like everything else.
 
