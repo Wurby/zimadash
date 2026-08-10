@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { type Age, type ItemView, humanElapsed } from '@shared/lasttime'
+import { type Age, type ItemView, humanElapsed, humanLast } from '@shared/lasttime'
 import { usePolled } from '../../lib/refresh'
 import { defineTool } from '../types'
 import meta from './meta.json'
@@ -121,7 +121,7 @@ function Tile() {
               type="button"
               onClick={() => log(item)}
               disabled={busy === item.id}
-              aria-label={`Log ${item.label}. Last done ${humanElapsed(item.elapsedDays)} ago.`}
+              aria-label={`Log ${item.label} — ${humanLast(item.elapsedDays)}`}
               className="hover:bg-line/40 focus-visible:bg-line/40 block w-full px-1 py-0.5 text-left outline-none disabled:opacity-50"
             >
               <span className="flex items-baseline justify-between gap-2">

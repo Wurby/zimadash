@@ -18,7 +18,13 @@ import {
 /**
  * The route behind the tile: configuration only. The tile does the showing;
  * this is where the four countdowns are set up.
+ *
+ * Controls carry an explicit touch floor — see the note in Last Time's Config
+ * for why a desktop pointer doesn't get to set the sizes here.
  */
+
+/** Minimum comfortable touch target. */
+const TOUCH = 'min-h-11'
 
 function Row({
   item,
@@ -48,14 +54,14 @@ function Row({
             if (trimmed !== item.label) void onPatch({ label: trimmed })
           }}
           aria-label="Name"
-          className="border-line focus:border-accent min-w-0 flex-1 border-b bg-transparent py-1 text-sm font-medium outline-none"
+          className={`border-line focus:border-accent ${TOUCH} min-w-0 flex-1 border-b bg-transparent py-1 text-sm font-medium outline-none`}
         />
 
         {confirming ? (
           <button
             type="button"
             onClick={() => void onDelete()}
-            className="border-danger text-danger hover:bg-danger/10 shrink-0 border px-2 py-1 text-xs transition-colors"
+            className={`border-danger text-danger hover:bg-danger/10 ${TOUCH} shrink-0 border px-3 text-xs transition-colors`}
           >
             really?
           </button>
@@ -65,7 +71,7 @@ function Row({
             onClick={() => setConfirming(true)}
             onBlur={() => setConfirming(false)}
             aria-label={`Delete ${item.label}`}
-            className="border-line text-ink-dim hover:border-danger hover:text-danger shrink-0 border px-2 py-1 text-xs transition-colors"
+            className={`border-line text-ink-dim hover:border-danger hover:text-danger ${TOUCH} w-11 shrink-0 border text-xs transition-colors`}
           >
             ✕
           </button>
@@ -82,15 +88,17 @@ function Row({
             }
           }}
           aria-label="Date"
-          className="border-line focus:border-accent border bg-transparent px-2 py-1 font-mono text-xs outline-none"
+          className={`border-line focus:border-accent ${TOUCH} border bg-transparent px-2 font-mono text-xs outline-none`}
         />
 
-        <label className="text-ink-dim flex items-center gap-1.5 text-xs">
+        <label
+          className={`text-ink-dim ${TOUCH} flex cursor-pointer items-center gap-1.5 px-1 text-xs`}
+        >
           <input
             type="checkbox"
             checked={item.yearly}
             onChange={(event) => void onPatch({ yearly: event.target.checked })}
-            className="accent-accent"
+            className="accent-accent size-5"
           />
           every year
         </label>
@@ -156,36 +164,51 @@ export function Config() {
         </p>
 
         <form onSubmit={create} className="mt-3 flex flex-wrap items-end gap-2">
-          <label className="min-w-0 flex-1">
-            <span className="text-ink-dim text-xs">Name</span>
+          {/* Full width on a phone rather than flexing: a native date input
+              plus a checkbox plus the button leaves nothing for a field that
+              flexes, and Name was collapsing to about 30px — narrower than its
+              own placeholder. It only shares a row once there is room. */}
+          {/* Full width on a phone rather than flexing: a native date input
+              plus a checkbox plus the button leaves nothing for a field that
+              flexes, and Name was collapsing to about 30px — narrower than its
+              own placeholder. It only shares a row once there is room.
+
+              The caption spans are `block` on purpose: a bare inline span sits
+              *beside* its input unless the input happens to be full-width,
+              which had "Name" captioned above and "Date" captioned to the left
+              in the same form. */}
+          <label className="w-full min-w-0 sm:w-auto sm:flex-1">
+            <span className="text-ink-dim block text-xs">Name</span>
             <input
               value={label}
               maxLength={MAX_LABEL}
               onChange={(event) => setLabel(event.target.value)}
               placeholder="Shoot day"
               disabled={full}
-              className="border-line focus:border-accent mt-1 w-full border bg-transparent px-2 py-1.5 text-sm outline-none disabled:opacity-40"
+              className={`border-line focus:border-accent ${TOUCH} mt-1 w-full border bg-transparent px-2 text-sm outline-none disabled:opacity-40`}
             />
           </label>
 
           <label>
-            <span className="text-ink-dim text-xs">Date</span>
+            <span className="text-ink-dim block text-xs">Date</span>
             <input
               type="date"
               value={date}
               onChange={(event) => setDate(event.target.value)}
               disabled={full}
-              className="border-line focus:border-accent mt-1 border bg-transparent px-2 py-1.5 font-mono text-sm outline-none disabled:opacity-40"
+              className={`border-line focus:border-accent ${TOUCH} mt-1 border bg-transparent px-2 font-mono text-sm outline-none disabled:opacity-40`}
             />
           </label>
 
-          <label className="text-ink-dim flex items-center gap-1.5 py-2 text-xs">
+          <label
+            className={`text-ink-dim ${TOUCH} mt-1 flex cursor-pointer items-center gap-1.5 px-1 text-xs`}
+          >
             <input
               type="checkbox"
               checked={yearly}
               onChange={(event) => setYearly(event.target.checked)}
               disabled={full}
-              className="accent-accent"
+              className="accent-accent size-5"
             />
             every year
           </label>
@@ -193,7 +216,7 @@ export function Config() {
           <button
             type="submit"
             disabled={saving || full || !label.trim()}
-            className="border-accent text-accent hover:bg-accent/10 border px-3 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+            className={`border-accent text-accent hover:bg-accent/10 ${TOUCH} mt-1 border px-4 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40`}
           >
             {saving ? 'adding…' : 'add'}
           </button>

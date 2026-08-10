@@ -17,7 +17,13 @@ import { getSettings, putSettings, searchPlaces } from './api'
  * The location is searched by name rather than typed as coordinates — and it is
  * stored server-side in DATA_DIR, not in this repo, because where you live is
  * personal and the repo is public.
+ *
+ * Controls carry an explicit touch floor — see the note in Last Time's Config
+ * for why a desktop pointer doesn't get to set the sizes here.
  */
+
+/** Minimum comfortable touch target. */
+const TOUCH = 'min-h-11'
 
 const UNITS: { value: TemperatureUnit; label: string }[] = [
   { value: 'celsius', label: '°C' },
@@ -67,18 +73,18 @@ function LocationPicker({
 
       <form onSubmit={search} className="mt-3 flex flex-wrap items-end gap-2">
         <label className="min-w-0 flex-1">
-          <span className="text-ink-dim text-xs">Search for a place</span>
+          <span className="text-ink-dim block text-xs">Search for a place</span>
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Town or city"
-            className="border-line focus:border-accent mt-1 w-full border bg-transparent px-2 py-1.5 text-sm outline-none"
+            className={`border-line focus:border-accent ${TOUCH} mt-1 w-full border bg-transparent px-2 text-sm outline-none`}
           />
         </label>
         <button
           type="submit"
           disabled={searching || query.trim().length < 2}
-          className="border-accent text-accent hover:bg-accent/10 border px-3 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+          className={`border-accent text-accent hover:bg-accent/10 ${TOUCH} border px-4 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40`}
         >
           {searching ? 'searching…' : 'search'}
         </button>
@@ -101,7 +107,7 @@ function LocationPicker({
                   setResults(null)
                   setQuery('')
                 }}
-                className="border-line bg-surface hover:border-accent hover:text-accent w-full border px-3 py-2 text-left text-sm transition-colors"
+                className={`border-line bg-surface hover:border-accent hover:text-accent ${TOUCH} w-full border px-3 py-2 text-left text-sm transition-colors`}
               >
                 {place.name}
                 <span className="text-ink-dim ml-2 font-mono text-xs">
@@ -172,7 +178,7 @@ export function Config() {
               type="button"
               onClick={() => void save({ unit: option.value })}
               aria-pressed={settings.unit === option.value}
-              className={`border px-4 py-1.5 font-mono text-sm transition-colors ${
+              className={`${TOUCH} border px-5 font-mono text-sm transition-colors ${
                 settings.unit === option.value
                   ? 'border-accent text-accent'
                   : 'border-line text-ink-dim hover:border-accent'
@@ -194,12 +200,14 @@ export function Config() {
         <ul className="mt-3 space-y-1">
           {SECTIONS.map((section) => (
             <li key={section}>
-              <label className="border-line bg-surface flex cursor-pointer items-center gap-3 border px-3 py-2 text-sm">
+              <label
+                className={`border-line bg-surface ${TOUCH} flex cursor-pointer items-center gap-3 border px-3 text-sm`}
+              >
                 <input
                   type="checkbox"
                   checked={settings.tile[section]}
                   onChange={(event) => toggleSection(section, event.target.checked)}
-                  className="accent-accent"
+                  className="accent-accent size-5"
                 />
                 {SECTION_LABELS[section]}
               </label>

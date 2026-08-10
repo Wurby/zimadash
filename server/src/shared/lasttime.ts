@@ -167,11 +167,32 @@ export function humanElapsed(elapsedDays: number | null): string {
   return `${Math.round(days / 365.25)}y`;
 }
 
-/** "every 30 days", "every 6 weeks" — the interval, in the units it reads best
- *  in. */
+/**
+ * "every 30d", "every 4w" — the interval.
+ *
+ * Weeks only when the figure divides into them exactly. This sits directly
+ * beside a field measured in days, and rounding 30 days to "4w" put two
+ * different numbers for one value in the same row — worse, the pin button then
+ * read "pin 4w" while pinning 30.
+ */
 export function humanInterval(days: number): string {
   if (days < 1) return `every ${Math.round(days * 24)}h`;
-  if (days < 14) return `every ${Math.round(days)}d`;
-  if (days < 70) return `every ${Math.round(days / 7)}w`;
-  return `every ${Math.round(days / 30.44)}mo`;
+  if (days >= 14 && Number.isInteger(days) && days % 7 === 0) {
+    return `every ${days / 7}w`;
+  }
+  return `every ${Math.round(days * 10) / 10}d`;
+}
+
+/**
+ * A complete phrase for when a thing was last done.
+ *
+ * `humanElapsed` returns a bare duration for the tile, where the label supplies
+ * the context. Anywhere it needs to stand on its own, the two edge cases —
+ * never, and moments ago — don't fit an "… ago" frame, which is how "last never
+ * ago" happened.
+ */
+export function humanLast(elapsedDays: number | null): string {
+  if (elapsedDays === null) return 'never done';
+  if (elapsedDays < 1 / 24) return 'just now';
+  return `${humanElapsed(elapsedDays)} ago`;
 }

@@ -74,7 +74,11 @@ function ToolTile({ slug }: { slug: string }) {
         <Link
           to={`/${meta.slug}`}
           aria-label={`Configure ${meta.name}`}
-          className="hover:bg-slate-300 focus-visible:bg-slate-300 dark:hover:bg-slate-700 dark:focus-visible:bg-slate-700 flex w-6 shrink-0 items-center justify-center bg-slate-200 transition-colors outline-none dark:bg-slate-800"
+          // Wider than the 24px band a normal tile gets. On those the whole
+          // tile is the link, so the strip's width is decoration; here it is
+          // the only way in, and 24px is half a fingertip. The cost is 20px of
+          // content width, which the sole entrance is worth.
+          className="hover:bg-slate-300 focus-visible:bg-slate-300 flex w-11 shrink-0 items-center justify-center bg-slate-200 transition-colors outline-none dark:bg-slate-800 dark:hover:bg-slate-700 dark:focus-visible:bg-slate-700"
         >
           {band}
         </Link>

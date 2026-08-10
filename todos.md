@@ -77,6 +77,13 @@ answer:
 - [ ] Whether the tile-clipping problem is a sizing problem in disguise. Tool
       tiles below about 3x2 are just the title band, so a third of the ladder is
       unusable for tools while being the whole point of it for badges
+- [ ] **A tile's size sets its tap targets, and nothing checks that.** Measured
+      on a phone: Last Time at its declared `6x4` gives five rows 29px each,
+      against a 44px touch minimum. The tool can't fix it from inside — rows
+      divide whatever height the grid hands down — so the levers are a taller
+      declared default, a per-item minimum that clips honestly, or the tool
+      declaring how many rows it needs. Everything in the config screens now
+      clears 44px; it's only the tiles that can't guarantee it
 
 ---
 
