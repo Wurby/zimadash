@@ -582,18 +582,98 @@ export function SessionTab() {
         onFinished={setFinished}
       />
 
-      <button
-        type="button"
-        onClick={() => {
-          void abandonSession(current.id).then(() => {
-            setSession(null)
-            active.refresh()
-          })
+      <Exits
+        session={current}
+        onEnded={setFinished}
+        onAbandoned={() => {
+          setSession(null)
+          active.refresh()
         }}
-        className={`border-line text-ink-dim hover:border-danger hover:text-danger ${TOUCH} border px-3 text-xs transition-colors`}
-      >
-        abandon this session
-      </button>
+      />
+    </div>
+  )
+}
+
+/**
+ * The two ways out of a session, which are not the same thing.
+ *
+ * **Ending early keeps what you did.** Four of six is still four sets you
+ * performed, and the server already records the rest as skipped rather than
+ * pretending they happened. This is the one you want when life interrupts.
+ *
+ * **Abandoning throws the session away**, which is right when you started it by
+ * mistake and wrong the rest of the time — so it confirms first, and says what
+ * it is about to destroy. Every other delete in this codebase asks twice; the
+ * most destructive action in it shouldn't be the exception.
+ */
+function Exits({
+  session,
+  onEnded,
+  onAbandoned,
+}: {
+  session: Session
+  onEnded: (records: PersonalRecord[]) => void
+  onAbandoned: () => void
+}) {
+  const [confirming, setConfirming] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  const logged = session.exercises.filter((exercise) => exercise.result !== null).length
+  const total = session.exercises.length
+
+  async function end() {
+    setBusy(true)
+    try {
+      onEnded((await finishSession(session.id)).records)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function abandon() {
+    setBusy(true)
+    try {
+      await abandonSession(session.id)
+      onAbandoned()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="border-line flex flex-wrap gap-2 border-t pt-4">
+      {logged > 0 && (
+        <button
+          type="button"
+          onClick={() => void end()}
+          disabled={busy}
+          className={`border-accent text-accent hover:bg-accent/10 ${TOUCH} border px-3 text-xs transition-colors disabled:opacity-40`}
+        >
+          End here — keep {logged} of {total}
+        </button>
+      )}
+
+      {confirming ? (
+        <button
+          type="button"
+          onClick={() => void abandon()}
+          disabled={busy}
+          className={`border-danger text-danger hover:bg-danger/10 ${TOUCH} border px-3 text-xs transition-colors disabled:opacity-40`}
+        >
+          {logged > 0
+            ? `Really? ${logged} logged exercise${logged === 1 ? '' : 's'} will be lost`
+            : 'Really — bin this session?'}
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setConfirming(true)}
+          onBlur={() => setConfirming(false)}
+          className={`border-line text-ink-dim hover:border-danger hover:text-danger ${TOUCH} border px-3 text-xs transition-colors`}
+        >
+          Abandon
+        </button>
+      )}
     </div>
   )
 }
