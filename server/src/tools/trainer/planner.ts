@@ -138,7 +138,10 @@ export function planSession(
         sets: prescribed.sets,
         reps: prescribed.reps,
       },
-      instructions: definition.note,
+      // The cue, never the note — one is how to do it and the other is why it
+      // was chosen, and only the first belongs on the screen you're stood in
+      // front of. The model writes richer instructions in place of this later.
+      instructions: definition.cue,
       result: null,
     };
   });

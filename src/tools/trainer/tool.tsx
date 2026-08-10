@@ -67,7 +67,15 @@ function Tile() {
 }
 
 function View() {
-  const [tab, setTab] = useState<Tab>('Progress')
+  const overview = usePolled('event-driven', getOverview)
+  const running = overview.status === 'ok' && overview.data.active !== null
+
+  // Progress is the landing tab, because watching the numbers move is the point
+  // — unless a session is actually in progress, in which case that is obviously
+  // what you came back for.
+  const [chosen, setChosen] = useState<Tab | null>(null)
+  const tab = chosen ?? (running ? 'Session' : 'Progress')
+  const setTab = setChosen
 
   return (
     <div>

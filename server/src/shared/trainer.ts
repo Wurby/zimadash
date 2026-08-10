@@ -158,6 +158,16 @@ export interface ExerciseDef {
   complex?: boolean;
   /** Other names this goes by, so an imported log matches. */
   aliases?: string[];
+  /**
+   * How to perform it — shown on the exercise screen and read aloud.
+   *
+   * Deliberately separate from `note`. They were one field until voice mode
+   * read "rotate this with flat bench rather than running both in one session"
+   * out loud mid-set: true, useful when *building* a session, and nonsense when
+   * you are stood holding the dumbbells.
+   */
+  cue?: string;
+  /** Context for choosing it. Never spoken. */
   note?: string;
 }
 
@@ -356,6 +366,39 @@ export interface Session {
   finishedAt?: number;
   /** Anything the importer couldn't parse cleanly, kept verbatim. */
   importNotes?: string[];
+}
+
+// ─── Speech ──────────────────────────────────────────────────────────────────
+
+/**
+ * What an exercise sounds like when it's read out.
+ *
+ * Shared so the sentence is identical whether it's synthesised on the server or
+ * spoken by the browser — otherwise the cached audio and the fallback would
+ * drift apart and the same screen would say two different things.
+ */
+export function spokenFor(exercise: SessionExercise, index: number, total: number): string {
+  const parts = [`Exercise ${index + 1} of ${total}. ${exercise.name}.`];
+
+  if (exercise.prescribed.weightLb > 0) {
+    parts.push(`${exercise.prescribed.weightLb} pounds.`);
+  } else {
+    parts.push('Bodyweight.');
+  }
+
+  parts.push(`${exercise.prescribed.sets} sets of ${exercise.prescribed.reps}.`);
+
+  // The knee protocol only gets spoken generically when the movement has
+  // nothing of its own to say. Where it does, that cue already carries the
+  // control cueing — saying both had the goblet squat repeat "knees over toes"
+  // twice in one breath.
+  if (exercise.instructions) {
+    parts.push(exercise.instructions);
+  } else if (exercise.kneeLoaded) {
+    parts.push('Knee work — control the descent, no bouncing, knees tracking over your toes.');
+  }
+
+  return parts.join(' ');
 }
 
 // ─── Progress ────────────────────────────────────────────────────────────────

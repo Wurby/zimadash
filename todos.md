@@ -221,10 +221,22 @@ A toggle in the session reads each exercise aloud as you land on it — name,
 load, sets and reps, then the cues — so the whole workout is one tap per
 exercise without looking at the screen.
 
-**`speechSynthesis`, the browser's own Web Speech API.** No dependency, no key,
-no metered call, nothing server-side, and it works on the phone. That is the
-same reasoning that put the estimator on the Claude CLI: use what's already
-there rather than adding a bill.
+**Two providers, best-first.** **Piper** on the box when it's installed — local
+neural TTS, MIT, CPU-only, and much better than a stock system voice. It is a
+binary the server shells out to, exactly like the Claude CLI, so there is no
+node dependency and the deploy's pure-JavaScript rule is untouched. Failing
+that, the browser's own `speechSynthesis`, which is always there.
+
+The fallback isn't a lesser mode, it's the floor: voice is not allowed to stop
+working because a box got rebuilt.
+
+**Installing Piper is a manual step on the server**, like the Claude CLI — the
+deploy doesn't manage it. The server looks for the binary at
+`ZIMADASH_PIPER_BIN` or the usual bin directories, and for a `.onnx` voice at
+`ZIMADASH_PIPER_VOICE` or in `DATA_DIR/trainer/voices/`. Voices live in
+`DATA_DIR` so a deploy can't wipe them. Synthesised audio is cached there too,
+keyed by what was said, capped and pruned oldest-first — regenerable, but the
+cues repeat across sessions and re-synthesising them is waste.
 
 - **Per device, in `localStorage`**, like the theme — voice on in your hand and
   off on the wall is a reasonable thing to want, and it is a UI preference
@@ -282,11 +294,33 @@ since the existing log shows exercises added on the fly.
 
 #### Phasing
 
-1. Foundation and Progress — data model, equipment → ladders, vault import, the
-   grid, PR board, tile. The fun part exists before anything else does.
-2. Session flow — rule-based planning, the walkthrough, ratings, persistence,
-   and voice mode.
-3. The model layer — exercise selection and written instructions on top.
+1. ~~Foundation and Progress~~ — **built.** Data model, equipment → ladders,
+   vault import, the grid, PR board, tile.
+2. ~~Session flow~~ — **built.** Rule-based planning, the walkthrough, one-tap
+   ratings, per-exercise persistence, swap/skip/adjust, and voice mode with the
+   Piper/browser fallback.
+3. The model layer — exercise selection and written instructions on top. The
+   rule-based planner stays underneath as the offered fallback.
+
+#### Learned while building phases one and two
+
+- **Zero is only a rung on a bodyweight ladder.** The knee override dropped a
+  goblet squat two rungs to 0lb — "hold no dumbbells", which is not a lighter
+  squat. Loaded implements now exclude it.
+- **Snapping belongs on a prescription, never on a record.** The importer was
+  rewriting a 35lb logged Leg Extension to 30 because 35 isn't on the plates
+  ladder. History is kept exactly as written and mismatches are flagged instead
+  — which correctly deduced a calf raise had been done with dumbbells that day.
+- **A ladder rung means different things to different movements.** 30lb is a
+  modest goblet squat and 15lb-per-hand on a lateral raise, which isn't hard,
+  it's impossible. New compounds start on the second rung, accessories on the
+  first.
+- **A catalogue entry needs two kinds of text.** `cue` is how to do it and gets
+  spoken; `note` is why it was chosen and never is. They were one field until
+  voice mode read "rotate this with flat bench rather than running both in one
+  session" aloud mid-set.
+- **The knee protocol is only spoken generically when a movement has no cue of
+  its own**, or the goblet squat says "knees over toes" twice in one breath.
 
 ### Homebridge
 

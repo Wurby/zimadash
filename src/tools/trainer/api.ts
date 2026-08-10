@@ -93,3 +93,77 @@ export function importVault(markdown: string): Promise<{
 }> {
   return api(`${BASE}/import`, { method: 'POST', body: JSON.stringify({ markdown }) })
 }
+
+// ─── Running a session ───────────────────────────────────────────────────────
+
+export function startSession(): Promise<{ session: Session }> {
+  return api(`${BASE}/sessions`, { method: 'POST' })
+}
+
+export function getActive(): Promise<{ session: Session | null }> {
+  return api(`${BASE}/sessions/active`)
+}
+
+export interface ResultInput {
+  rating?: Rating
+  weightLb?: number
+  sets?: number
+  reps?: number
+  note?: string
+  skipped?: boolean
+  skipReason?: string
+}
+
+export function recordResult(
+  id: string,
+  index: number,
+  result: ResultInput,
+): Promise<{ session: Session; allDone: boolean }> {
+  return api(`${BASE}/sessions/${id}/exercises/${index}`, {
+    method: 'PATCH',
+    body: JSON.stringify(result),
+  })
+}
+
+export interface Alternative {
+  name: string
+  implement: Implement
+  kind: 'compound' | 'accessory'
+  kneeLoaded: boolean
+  note?: string
+}
+
+export function getAlternatives(
+  id: string,
+  index: number,
+): Promise<{ alternatives: Alternative[] }> {
+  return api(`${BASE}/sessions/${id}/alternatives/${index}`)
+}
+
+export function swapExercise(
+  id: string,
+  index: number,
+  name: string,
+): Promise<{ session: Session }> {
+  return api(`${BASE}/sessions/${id}/exercises/${index}/swap`, {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  })
+}
+
+export function addExercise(id: string, name: string): Promise<{ session: Session }> {
+  return api(`${BASE}/sessions/${id}/exercises`, {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  })
+}
+
+export function finishSession(
+  id: string,
+): Promise<{ session: Session; records: PersonalRecord[] }> {
+  return api(`${BASE}/sessions/${id}/finish`, { method: 'POST' })
+}
+
+export function abandonSession(id: string): Promise<{ ok: boolean }> {
+  return api(`${BASE}/sessions/${id}`, { method: 'DELETE' })
+}

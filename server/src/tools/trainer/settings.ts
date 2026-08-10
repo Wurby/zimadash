@@ -63,7 +63,7 @@ const SEED_CATALOGUE: ExerciseDef[] = [
     implement: 'bar',
     kind: 'accessory',
     days: ['Upper A', 'Upper B'],
-    note: 'Elbows catch the plates on the EZ bar mid-pull — dumbbells may suit better.',
+    cue: 'Elbows catch the plates on the EZ bar mid-pull — switch to dumbbells if it bites.',
   },
   {
     name: 'Overhead Tricep Extension',
@@ -71,7 +71,7 @@ const SEED_CATALOGUE: ExerciseDef[] = [
     kind: 'accessory',
     days: ['Upper A', 'Upper B'],
     aliases: ['Overhead Tricep Extension (DB, two-hand)'],
-    note: 'Two hands on one dumbbell, held vertical behind the head.',
+    cue: 'Two hands on one dumbbell, held vertical behind the head. Extend to lockout.',
   },
   {
     name: 'Incline DB Press',
@@ -110,7 +110,8 @@ const SEED_CATALOGUE: ExerciseDef[] = [
     implement: 'bodyweight',
     kind: 'accessory',
     days: ['Upper A', 'Upper B'],
-    note: 'Feet-elevated for more load. Becomes the main chest lever once Bench nears its ceiling.',
+    cue: 'Feet elevated for more load; the handles give you full range.',
+    note: 'Becomes the main chest lever once Bench nears its ceiling.',
   },
   {
     name: 'Skull Crusher',
@@ -138,7 +139,7 @@ const SEED_CATALOGUE: ExerciseDef[] = [
     kind: 'accessory',
     days: ['Lower'],
     aliases: ['Hip Thrust (box)'],
-    note: 'On the box. Hold a dumbbell across the hips once bodyweight is easy.',
+    cue: 'On the box. Hold the dumbbell across your hips and drive through the heels.',
   },
   {
     name: 'DB Goblet Squat',
@@ -147,7 +148,8 @@ const SEED_CATALOGUE: ExerciseDef[] = [
     days: ['Lower'],
     kneeLoaded: true,
     aliases: ['Goblet Squat'],
-    note: 'Both dumbbells stacked at the chest. The default squat — no rack needed.',
+    cue: 'Both dumbbells stacked vertically at the chest. Control the descent, no bounce, knees tracking over your toes.',
+    note: 'The default squat — no rack needed.',
   },
   {
     name: 'EZ Bar Front Squat',
@@ -171,7 +173,8 @@ const SEED_CATALOGUE: ExerciseDef[] = [
     implement: 'bar',
     kind: 'accessory',
     days: ['Lower'],
-    note: 'Ankle-dominant and low risk. The DB standing version is fine when the shoulder-bar setup is a hassle — the log shows both.',
+    cue: 'Standing, full range through the ankle. Dumbbells are fine if the shoulder-bar setup is a hassle.',
+    note: 'Ankle-dominant and low risk. The log shows it done both ways.',
   },
 
   // ── Complexes ──
@@ -183,6 +186,7 @@ const SEED_CATALOGUE: ExerciseDef[] = [
     kneeLoaded: true,
     complex: true,
     aliases: ['Thruster'],
+    cue: 'Squat to full extension, then drive the bar overhead at the top. Same knee control — no ballistic bounce out of the bottom.',
     note: 'Cap the load at what the press can take, not the squat.',
   },
   {

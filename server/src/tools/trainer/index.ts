@@ -2,6 +2,7 @@ import { Router } from 'express';
 import type { ServerTool } from '../registry.js';
 import {
   IMPLEMENTS,
+  RATINGS,
   currentStreak,
   dayKey,
   habitGrid,
@@ -15,9 +16,18 @@ import {
   type Session,
 } from '../../shared/trainer.js';
 import { readSettings, writeSettings, type TrainerSettings } from './settings.js';
-import { allSessions, history, writeSessions } from './storage.js';
+import {
+  activeSession,
+  allSessions,
+  findSession,
+  history,
+  removeSession,
+  upsertSession,
+  writeSessions,
+} from './storage.js';
 import { parseVaultLog } from './importVault.js';
 import { planSession } from './planner.js';
+import { speechCapability, synthesise } from './speech.js';
 
 /**
  * Personal trainer — everything under /api/tools/trainer.
@@ -255,6 +265,285 @@ router.post('/import', (req, res) => {
     replaced: existing.length - kept.length,
     notes: [...notes, ...parsed.flatMap((session) => session.importNotes ?? [])],
   });
+});
+
+// ─── Running a session ───────────────────────────────────────────────────────
+
+/**
+ * Results are written the moment they're tapped, not at the end.
+ *
+ * The session only *counts* as finished when you finish it, but a phone sleeps
+ * between sets and a reload has to put you back where you were. Persisting per
+ * exercise is the difference between losing a workout and not.
+ */
+
+function loadSession(id: string, res: import('express').Response): Session | null {
+  const session = findSession(id);
+  if (!session) {
+    res.status(404).json({ error: 'no such session' });
+    return null;
+  }
+  return session;
+}
+
+/** Start the planned session, or adopt one already in progress. */
+router.post('/sessions', (_req, res) => {
+  const existing = activeSession();
+  if (existing) {
+    res.json({ session: existing });
+    return;
+  }
+
+  const settings = readSettings();
+  const done = history();
+  const session = planSession(
+    nextSessionType(done),
+    settings.catalogue,
+    settings.inventory,
+    done,
+    today(),
+  );
+
+  session.status = 'active';
+  session.startedAt = Date.now();
+  upsertSession(session);
+  res.json({ session });
+});
+
+router.get('/sessions/active', (_req, res) => {
+  res.json({ session: activeSession() });
+});
+
+/** Record how an exercise went and move to the next. */
+router.patch('/sessions/:id/exercises/:index', (req, res) => {
+  const session = loadSession(req.params.id, res);
+  if (!session) return;
+
+  const index = Number(req.params.index);
+  const exercise = session.exercises[index];
+  if (!exercise) {
+    res.status(404).json({ error: 'no such exercise in this session' });
+    return;
+  }
+
+  const { rating, weightLb, sets, reps, note, skipped, skipReason } = req.body ?? {};
+
+  if (skipped === true) {
+    exercise.result = {
+      weightLb: exercise.prescribed.weightLb,
+      sets: 0,
+      reps: 0,
+      rating: 'hard',
+      skipped: true,
+      skipReason: typeof skipReason === 'string' ? skipReason.slice(0, 300) : undefined,
+    };
+  } else {
+    if (!RATINGS.includes(rating)) {
+      res.status(400).json({ error: `rating must be one of ${RATINGS.join(', ')}` });
+      return;
+    }
+
+    const number = (value: unknown, fallback: number) =>
+      typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : fallback;
+
+    exercise.result = {
+      weightLb: number(weightLb, exercise.prescribed.weightLb),
+      sets: number(sets, exercise.prescribed.sets),
+      reps: number(reps, exercise.prescribed.reps),
+      rating,
+      note: typeof note === 'string' && note.trim() ? note.slice(0, 300) : undefined,
+    };
+  }
+
+  // Move to the first exercise that still has no result, so going back to
+  // correct one doesn't drag you through the rest again.
+  const pending = session.exercises.findIndex((candidate) => candidate.result === null);
+  session.cursor = pending === -1 ? session.exercises.length - 1 : pending;
+
+  upsertSession(session);
+  res.json({ session, allDone: pending === -1 });
+});
+
+/** What could stand in for this exercise. */
+router.get('/sessions/:id/alternatives/:index', (req, res) => {
+  const session = loadSession(req.params.id, res);
+  if (!session) return;
+
+  const index = Number(req.params.index);
+  const exercise = session.exercises[index];
+  if (!exercise) {
+    res.status(404).json({ error: 'no such exercise in this session' });
+    return;
+  }
+
+  const settings = readSettings();
+  const inSession = new Set(session.exercises.map((candidate) => candidate.name));
+
+  const candidates = settings.catalogue.filter(
+    (definition) =>
+      definition.days.includes(session.type) &&
+      !inSession.has(definition.name) &&
+      !definition.complex,
+  );
+
+  // Swapping out knee work is usually because something hurt, so the low-stress
+  // options the brief names come first rather than another squat variant.
+  const ranked = exercise.kneeLoaded
+    ? [
+        ...candidates.filter((definition) => !definition.kneeLoaded),
+        ...candidates.filter((definition) => definition.kneeLoaded),
+      ]
+    : candidates;
+
+  res.json({
+    alternatives: ranked.slice(0, 6).map((definition) => ({
+      name: definition.name,
+      implement: definition.implement,
+      kind: definition.kind,
+      kneeLoaded: definition.kneeLoaded ?? false,
+      note: definition.note,
+    })),
+  });
+});
+
+/** Replace an exercise in place, keeping your position in the session. */
+router.post('/sessions/:id/exercises/:index/swap', (req, res) => {
+  const session = loadSession(req.params.id, res);
+  if (!session) return;
+
+  const index = Number(req.params.index);
+  if (!session.exercises[index]) {
+    res.status(404).json({ error: 'no such exercise in this session' });
+    return;
+  }
+
+  const settings = readSettings();
+  const definition = settings.catalogue.find((candidate) => candidate.name === req.body?.name);
+  if (!definition) {
+    res.status(400).json({ error: 'that exercise is not in the catalogue' });
+    return;
+  }
+
+  const done = history();
+  const replacement = planSession(
+    session.type,
+    [definition],
+    settings.inventory,
+    done,
+    session.date,
+  ).exercises[0];
+
+  if (!replacement) {
+    res.status(500).json({ error: 'could not build a replacement' });
+    return;
+  }
+
+  session.exercises[index] = replacement;
+  upsertSession(session);
+  res.json({ session });
+});
+
+/** Add one on the fly — the log shows this happening, so it has to be possible. */
+router.post('/sessions/:id/exercises', (req, res) => {
+  const session = loadSession(req.params.id, res);
+  if (!session) return;
+
+  const settings = readSettings();
+  const definition = settings.catalogue.find((candidate) => candidate.name === req.body?.name);
+  if (!definition) {
+    res.status(400).json({ error: 'that exercise is not in the catalogue' });
+    return;
+  }
+
+  const added = planSession(session.type, [definition], settings.inventory, history(), session.date)
+    .exercises[0];
+
+  if (!added) {
+    res.status(500).json({ error: 'could not build that exercise' });
+    return;
+  }
+
+  session.exercises.push(added);
+  session.cursor = session.exercises.length - 1;
+  upsertSession(session);
+  res.json({ session });
+});
+
+router.post('/sessions/:id/finish', (req, res) => {
+  const session = loadSession(req.params.id, res);
+  if (!session) return;
+
+  // Anything never reached is recorded as skipped rather than silently dropped
+  // — a session that says six exercises and logs four should say why.
+  for (const exercise of session.exercises) {
+    if (exercise.result === null) {
+      exercise.result = {
+        weightLb: exercise.prescribed.weightLb,
+        sets: 0,
+        reps: 0,
+        rating: 'hard',
+        skipped: true,
+        skipReason: 'not reached',
+      };
+    }
+  }
+
+  session.status = 'done';
+  session.finishedAt = Date.now();
+  upsertSession(session);
+
+  const before = history().filter((candidate) => candidate.id !== session.id);
+  const previous = new Set(personalRecords(before).map((record) => record.exercise));
+  const fresh = personalRecords(history()).filter(
+    (record) => record.date === session.date && !previous.has(record.exercise),
+  );
+
+  res.json({
+    session,
+    records: personalRecords(history()).filter((record) => record.date === session.date),
+    newExercises: fresh.length,
+  });
+});
+
+router.delete('/sessions/:id', (req, res) => {
+  const session = loadSession(req.params.id, res);
+  if (!session) return;
+  if (session.status === 'done') {
+    res.status(409).json({ error: 'that one is already logged' });
+    return;
+  }
+
+  removeSession(session.id);
+  res.json({ ok: true });
+});
+
+// ─── Voice ───────────────────────────────────────────────────────────────────
+
+router.get('/speech', (_req, res) => {
+  res.json(speechCapability());
+});
+
+router.post('/speech', async (req, res) => {
+  const text: unknown = req.body?.text;
+
+  if (typeof text !== 'string' || text.trim().length === 0) {
+    res.status(400).json({ error: 'text is required' });
+    return;
+  }
+  if (text.length > 2_000) {
+    res.status(413).json({ error: 'that is more than anyone needs read aloud at once' });
+    return;
+  }
+
+  try {
+    const audio = await synthesise(text);
+    res.setHeader('Content-Type', 'audio/wav');
+    // Keyed on the text, so the same cue is never fetched twice in a session.
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    res.send(audio);
+  } catch (err) {
+    res.status(503).json({ error: (err as Error).message });
+  }
 });
 
 const tool: ServerTool = { slug: 'trainer', router };

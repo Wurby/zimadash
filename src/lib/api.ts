@@ -94,3 +94,34 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   return body as T
 }
+
+/**
+ * The same call, for a response that isn't JSON — audio, at the time of
+ * writing.
+ *
+ * It exists so binary endpoints don't become the one place a component reaches
+ * for `fetch` itself: the token and the 401 bounce stay here with everything
+ * else. An error response is still JSON, so failures read the same as they do
+ * above.
+ */
+export async function apiBlob(path: string, init: RequestInit = {}): Promise<Blob> {
+  const token = getToken()
+  const headers = new Headers(init.headers)
+  if (init.body) headers.set('Content-Type', 'application/json')
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+
+  const res = await fetch(path, { ...init, headers })
+
+  if (res.status === 401 && !path.startsWith('/api/auth/')) {
+    clearToken()
+    window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT))
+  }
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}) as Record<string, unknown>)
+    const message = typeof body.error === 'string' ? body.error : res.statusText
+    throw new ApiError(message, res.status, body)
+  }
+
+  return res.blob()
+}
