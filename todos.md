@@ -307,6 +307,21 @@ maintained by hand, and the model never sees most of the brief.
   computed suggestions. Verified: it followed every one of them. The rules
   planner stays underneath as the offered fallback.
 
+**Voice bug, found in use and fixed.** Piper and the browser voice spoke over
+each other. Four things in a chain: the voice toggle both spoke and flipped the
+state whose effect also speaks, so two requests went out for one sentence; both
+computed the same cache path and therefore the same temp file, so two Piper
+processes wrote one file and both renamed it; the loser threw; and the client
+read any failure as "this box has no voice" and dropped to `speechSynthesis`
+while the winner was still playing. Now: only the effect speaks, temp files are
+unique per render, identical concurrent renders are coalesced to one process,
+`stop()` invalidates work in flight, and only a 503 switches engines. Verified
+with six concurrent identical requests — one render, zero failures.
+
+Voice is now `en_US-lessac-medium`. **Swapping means removing the old `.onnx`**,
+not just adding the new one: the resolver takes the first alphabetically, so
+`en_GB-alan` would have silently kept winning.
+
 Piper install, in case it needs redoing: the standalone `rhasspy/piper` tarball
 into `~/opt/piper`, symlinked into `~/.local/bin` — the bundled libs resolve
 through `$ORIGIN`, so a symlink is enough. **`extra/piper` in the Arch repos is

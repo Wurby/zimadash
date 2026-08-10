@@ -307,6 +307,29 @@ is untouched.
 **iOS will not speak or play audio without a prior user gesture**, so the Start
 tap primes both paths — arriving at the first exercise is far too late.
 
+**Only one thing may start speech: the effect that watches the current
+exercise.** A control that both speaks and flips the state that effect depends
+on fires twice, and two requests for the same sentence used to collide on the
+server, fail one of them, and drop that one to the browser voice — so Piper and
+`speechSynthesis` talked over each other. Toggles prime and set state; they
+don't speak.
+
+Two rules that keep the two engines from ever overlapping:
+
+- **`stop()` invalidates work in flight.** Synthesis takes about a second, which
+  is long enough to advance an exercise underneath it. A reply that lands after
+  a `stop()` must neither play nor fall back.
+- **Only a 503 means "this box has no voice."** Any other failure is a blip.
+  Treating every error as permanent is what let one hiccup switch engines
+  mid-session while the successful request was still playing.
+
+Server-side, identical concurrent renders are **coalesced** — Piper's duration
+prediction is stochastic, so the same sentence rendered twice is genuinely two
+different files — and each render writes a uniquely-named temp file. Which voice
+is used is **the first `.onnx` alphabetically**, which is arbitrary rather than a
+preference: swapping voices means removing the old one, or pinning with
+`ZIMADASH_PIPER_VOICE`.
+
 ## Stack
 
 - React 19 + TypeScript + Vite, Tailwind v4 (`@theme inline` tokens in
