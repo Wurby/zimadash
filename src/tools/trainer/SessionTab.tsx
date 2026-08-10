@@ -16,6 +16,7 @@ import {
   getActive,
   getAlternatives,
   getPlan,
+  planWithModel,
   recordResult,
   startSession,
   swapExercise,
@@ -44,13 +45,49 @@ function Loading() {
 
 // ─── Before you start ────────────────────────────────────────────────────────
 
+/**
+ * The plan, before you start.
+ *
+ * The rules plan renders immediately and the model's is requested underneath
+ * it, swapping in when it arrives. Waiting a minute on a blank screen to find
+ * out what today is would be worse than seeing a serviceable session at once and
+ * watching it get better — and if the model is down, what's on screen is
+ * already the fallback, labelled as such rather than substituted quietly.
+ */
+type ModelPlan = 'idle' | { session: Session; reasoning: string } | { error: string }
+
 function PlanSummary({ onStart, starting }: { onStart: () => void; starting: boolean }) {
   const plan = usePolled('event-driven', getPlan)
+  const [model, setModel] = useState<ModelPlan>('idle')
+
+  const base = plan.status === 'ok' ? plan.data : null
+  const alreadyModel = base?.plannedBy === 'model'
+
+  useEffect(() => {
+    if (!base || alreadyModel) return
+    let alive = true
+    planWithModel()
+      .then((found) => alive && setModel(found))
+      .catch(
+        (err: unknown) =>
+          alive && setModel({ error: err instanceof Error ? err.message : 'the planner is down' }),
+      )
+    return () => {
+      alive = false
+    }
+  }, [base, alreadyModel])
 
   if (plan.status === 'loading') return <Loading />
   if (plan.status === 'error') return <p className="text-danger text-sm">{plan.message}</p>
 
-  const { session } = plan.data
+  const upgraded = typeof model === 'object' && 'session' in model ? model : null
+  const failed = typeof model === 'object' && 'error' in model ? model.error : null
+  // Working is derived rather than stored, so nothing has to set state from
+  // inside the effect that starts the request.
+  const thinking = !alreadyModel && model === 'idle'
+
+  const session = upgraded?.session ?? plan.data.session
+  const byModel = alreadyModel || upgraded !== null
 
   return (
     <div className="space-y-5">
@@ -58,6 +95,16 @@ function PlanSummary({ onStart, starting }: { onStart: () => void; starting: boo
         <h2 className="text-lg font-semibold tracking-tight">{session.type}</h2>
         <span className="text-ink-dim font-mono text-xs">{session.exercises.length} exercises</span>
       </div>
+
+      <p className="text-ink-dim text-xs">
+        {thinking ? (
+          <span className="text-accent">Planning your session… showing the rules version.</span>
+        ) : byModel ? (
+          (upgraded?.reasoning ?? 'Planned for you.')
+        ) : (
+          <>Built from the rules{failed ? ` — ${failed}` : ''}.</>
+        )}
+      </p>
 
       <ul className="space-y-2">
         {session.exercises.map((exercise, index) => (

@@ -21,12 +21,14 @@ import {
   allSessions,
   findSession,
   history,
+  plannedSession,
   removeSession,
   upsertSession,
   writeSessions,
 } from './storage.js';
 import { parseVaultLog } from './importVault.js';
 import { planSession } from './planner.js';
+import { planWithModel } from './brain.js';
 import { speechCapability, synthesise } from './speech.js';
 
 /**
@@ -63,7 +65,7 @@ router.get('/', (_req, res) => {
   const settings = readSettings();
   const done = history();
   const sessions = allSessions();
-  const active = sessions.find((session) => session.status !== 'done') ?? null;
+  const active = sessions.find((session) => session.status === 'active') ?? null;
 
   const now = today();
   const weeks = weeklySummaries(done);
@@ -227,7 +229,62 @@ router.get('/plan', (_req, res) => {
   const done = history();
   const type = nextSessionType(done);
 
-  res.json({ session: planSession(type, settings.catalogue, settings.inventory, done, today()) });
+  // A plan the model built earlier today still stands — regenerating it would
+  // throw away a two-minute wait and might quietly hand back a different
+  // workout than the one on screen a moment ago.
+  const stored = plannedSession();
+  if (stored && stored.date === today() && stored.type === type) {
+    res.json({ session: stored, plannedBy: stored.plannedBy });
+    return;
+  }
+  if (stored) removeSession(stored.id);
+
+  res.json({
+    session: planSession(type, settings.catalogue, settings.inventory, done, today()),
+    plannedBy: 'rules',
+  });
+});
+
+/**
+ * Upgrade today's plan using the model.
+ *
+ * Slow — a process spawn plus model time — so the Session tab shows the rules
+ * plan immediately and swaps this in when it lands. The result is stored, so a
+ * reload keeps it.
+ */
+router.post('/plan/model', async (_req, res) => {
+  if (activeSession()) {
+    res.status(409).json({ error: 'a session is already running' });
+    return;
+  }
+
+  const settings = readSettings();
+  const done = history();
+  const type = nextSessionType(done);
+
+  try {
+    const { session, reasoning } = await planWithModel(
+      type,
+      settings.policy,
+      settings.catalogue,
+      settings.inventory,
+      done,
+      today(),
+    );
+
+    const stale = plannedSession();
+    if (stale) removeSession(stale.id);
+    upsertSession(session);
+
+    res.json({ session, reasoning, plannedBy: 'model' });
+  } catch (err) {
+    // Never substituted silently — the rules plan is already on screen, and the
+    // caller is told plainly that this is what it is.
+    res.status(503).json({
+      error: (err as Error).message,
+      fallback: 'rules',
+    });
+  }
 });
 
 // ─── Import ──────────────────────────────────────────────────────────────────
@@ -294,15 +351,21 @@ router.post('/sessions', (_req, res) => {
     return;
   }
 
-  const settings = readSettings();
   const done = history();
-  const session = planSession(
-    nextSessionType(done),
-    settings.catalogue,
-    settings.inventory,
-    done,
-    today(),
-  );
+  const type = nextSessionType(done);
+
+  // Whatever is on screen is what starts. If the model built today's plan, that
+  // is the one — starting a freshly-computed rules session instead would be a
+  // different workout than the one just read.
+  const stored = plannedSession();
+  const session =
+    stored && stored.date === today() && stored.type === type
+      ? stored
+      : (() => {
+          const settings = readSettings();
+          if (stored) removeSession(stored.id);
+          return planSession(type, settings.catalogue, settings.inventory, done, today());
+        })();
 
   session.status = 'active';
   session.startedAt = Date.now();

@@ -30,9 +30,20 @@ export function findSession(id: string): Session | null {
   return allSessions().find((session) => session.id === id) ?? null;
 }
 
-/** The one in progress, if any. There is only ever one. */
+/** The one actually being worked through, if any. There is only ever one. */
 export function activeSession(): Session | null {
-  return allSessions().find((session) => session.status !== 'done') ?? null;
+  return allSessions().find((session) => session.status === 'active') ?? null;
+}
+
+/**
+ * A session that has been built but not started.
+ *
+ * Kept separate from active on purpose: the model's plan is stored the moment
+ * it's generated, so a reload doesn't throw away a two-minute wait — but a plan
+ * sitting there is not a workout in progress, and the tile must not claim it is.
+ */
+export function plannedSession(): Session | null {
+  return allSessions().find((session) => session.status === 'planned') ?? null;
 }
 
 export function upsertSession(session: Session): Session[] {

@@ -82,8 +82,14 @@ export function getSessions(range: { from?: string; to?: string } = {}): Promise
   return api(`${BASE}/sessions${suffix}`)
 }
 
-export function getPlan(): Promise<{ session: Session }> {
+export function getPlan(): Promise<{ session: Session; plannedBy: Session['plannedBy'] }> {
   return api(`${BASE}/plan`)
+}
+
+/** Slow — a process spawn plus model time. The rules plan is shown while this
+ *  runs and swapped out when it lands. */
+export function planWithModel(): Promise<{ session: Session; reasoning: string }> {
+  return api(`${BASE}/plan/model`, { method: 'POST' })
 }
 
 export function importVault(markdown: string): Promise<{
