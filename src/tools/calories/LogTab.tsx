@@ -160,7 +160,10 @@ function Row({
                 inputMode="decimal"
                 value={draft[field.id] ?? ''}
                 onChange={(e) => setDraft({ ...draft, [field.id]: e.target.value })}
-                className="border-line focus:border-accent w-14 border bg-transparent px-1.5 py-1 font-mono text-xs outline-none"
+                // Sized for six monospace characters at 16px, which is what
+                // this becomes on a touch screen — "103.5" has to fit without
+                // the field scrolling under your thumb while you type.
+                className="border-line focus:border-accent w-18 border bg-transparent px-1.5 py-1 font-mono text-xs outline-none"
               />
             </label>
           ) : entry.values[field.id] === undefined ? null : (

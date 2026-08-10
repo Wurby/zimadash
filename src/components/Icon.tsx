@@ -14,6 +14,15 @@ const paths: Record<string, ReactNode> = {
     </>
   ),
   moon: <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />,
+  // Follow-the-OS. A half-filled disc rather than a monitor glyph: it sits
+  // beside the sun and the moon and reads as "some of each", which is what the
+  // mode means. The fill is set on the path because the sheet is stroke-only.
+  system: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor" stroke="none" />
+    </>
+  ),
   back: <path d="M19 12H5M12 19l-7-7 7-7" />,
   check: <path d="M20 6L9 17l-5-5" />,
   bolt: <path d="M13 2L4.5 13.5H11l-1 8.5 8.5-11.5H12l1-8.5z" />,

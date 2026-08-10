@@ -221,6 +221,24 @@ is worse than a visible failure.
 - React 19 + TypeScript + Vite, Tailwind v4 (`@theme inline` tokens in
   `src/index.css`, class-based dark mode seeded by an inline script in
   `index.html` so the wall display never flashes)
+
+**The theme has three states, and two of them are not the same kind of thing.**
+The _preference_ is what you chose — `light`, `dark` or `system` — and the
+_resolved_ theme is what is on screen. In system mode the preference stays
+`system` while the resolved value flips underneath it, so the toggle's icon
+shows the preference; showing the resolved one would make system mode
+indistinguishable from whichever theme it landed on.
+
+Only `light` and `dark` are ever written to `localStorage`. **Absence of the key
+means system** — a first visit and a deliberate "follow the OS" are the same
+state, and the inline seed script never has to know about a third value. Keep
+that script and `resolve()` in `lib/theme.ts` in agreement: a disagreement is
+exactly the pre-paint flash the script exists to prevent. A pinned value also
+holds against later OS changes, which is the point of pinning it; system mode
+listens for `prefers-color-scheme` and re-applies live, because the wall display
+goes untouched for days and a change it only picks up on reload is one it never
+picks up.
+
 - Express + `systeminformation` in `server/`, its own `package.json`
 - One process serves both the API and the built frontend from `dist/`. No proxy.
 
@@ -245,6 +263,17 @@ Anything that should read as **lifted off the page** — a homepage tile, the
 stats badge, an action button — is `bg-surface` with a `border-line` border on
 the `bg-bg` page. That one relationship is what makes them a family.
 
+**Text fields are 16px on touch, and that is not negotiable.** iOS zooms the
+viewport on focus whenever a field's computed font-size is under 16px, and a
+page cannot opt out — the viewport-meta workaround costs pinch-zoom and is
+ignored by Safari anyway. A rule in `src/index.css` raises any `input`,
+`textarea` or `select` to 16px under `(pointer: coarse)`, so a `text-sm` field
+is 14px on a desktop and 16px on the phone and the wall. Don't fight it with
+`!important`, and don't undo it by putting `text-base` on a field you actually
+want smaller — that class is the opt-out. **Size dense fields for what they
+become**: a `w-14` box holding four monospace characters at 12px only holds four
+at 16px too, so widen it.
+
 **Corners are square.** No `rounded-*` anywhere, and no `rx` on the SVGs. If you
 add a surface, it gets hard edges like everything else.
 
@@ -267,7 +296,7 @@ src/
   App.tsx             route table: / , /:slug/* , 404
   lib/api.ts          every API call — attaches the token, handles 401 in one place
   lib/refresh.ts      tier scheduler + usePolled — ONE timer per tier, app-wide
-  lib/theme.ts        light/dark, class-driven on <html>
+  lib/theme.ts        light/dark/system, class-driven on <html>
   lib/pwa.ts          swaps the manifest <link> per route
   lib/grid.ts         measured grid geometry — columns per surface, unit derived
   lib/layout.ts       the stored arrangement; lib/reorder.ts drives dragging

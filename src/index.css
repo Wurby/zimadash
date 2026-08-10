@@ -91,3 +91,40 @@ body {
   padding-right: env(safe-area-inset-right);
   padding-bottom: env(safe-area-inset-bottom);
 }
+
+/* iOS zooms the viewport whenever you focus a text field whose computed
+   font-size is under 16px. It is a legibility heuristic that has been in Mobile
+   Safari since the first iPhone, it covers input/textarea/select, and a page
+   cannot opt out of it. Exactly 16px is fine; 15.9px is not. It scales the
+   visual viewport rather than reflowing the layout, which is why the page
+   appears to lurch, and the zoom-out afterwards is only the restore on blur.
+
+   The usual fix — `maximum-scale=1` or `user-scalable=no` on the viewport meta
+   — is wrong here twice over. It costs pinch-zoom, and Safari has ignored it in
+   the browser since iOS 10 while an installed home-screen app still honours it:
+   no effect where it wouldn't matter, and a lost gesture where it would.
+
+   So the floor goes on the fields themselves, and only where the pointer is a
+   finger — a mouse keeps the denser type it was designed with. The `:not()`
+   list means this can only ever raise a field to 16px and never shrink the ones
+   that are deliberately larger, and it catches an unclassed or arbitrary-value
+   input rather than only the utilities in use today. Unlayered, so it outranks
+   Tailwind's utilities without `!important`.
+
+   Types with no text to zoom into are left alone. */
+@media (pointer: coarse) {
+  input:not(
+      [type='checkbox'],
+      [type='radio'],
+      [type='range'],
+      [type='color'],
+      [type='file'],
+      [type='button'],
+      [type='submit'],
+      [type='reset']
+    ):not(.text-base, .text-lg, .text-xl, .text-2xl),
+  textarea:not(.text-base, .text-lg, .text-xl, .text-2xl),
+  select:not(.text-base, .text-lg, .text-xl, .text-2xl) {
+    font-size: 1rem;
+  }
+}

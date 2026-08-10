@@ -16,10 +16,14 @@
 
     <title>zimadash</title>
     <script>
-      // Applied before first paint so the wall display never flashes the wrong theme.
+      // Applied before first paint so the wall display never flashes the wrong
+      // theme. Only 'light' and 'dark' are ever stored — anything else, including
+      // no key at all, means follow the OS.
       try {
         var stored = localStorage.getItem('zimadash.theme')
-        var dark = stored ? stored === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches
+        var dark =
+          stored === 'dark' ||
+          (stored !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)
         document.documentElement.classList.toggle('dark', dark)
       } catch {}
     </script>

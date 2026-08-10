@@ -18,7 +18,7 @@ import { usePolled } from '../lib/refresh'
 import { usePwaManifest } from '../lib/pwa'
 import { useGrid, gridStyle, itemStyle } from '../lib/grid'
 import { useLayout } from '../lib/layout'
-import { useTheme } from '../lib/theme'
+import { nextTheme, useTheme } from '../lib/theme'
 import { Icon } from '../components/Icon'
 import { ActionButton } from '../components/QuickActions'
 import { StatsTile } from '../components/StatsTile'
@@ -73,7 +73,7 @@ function ToolTile({ slug }: { slug: string }) {
 export function Home() {
   usePwaManifest(null)
   const [ref, geometry] = useGrid<HTMLDivElement>()
-  const { theme, toggle } = useTheme()
+  const { theme, resolved, cycle } = useTheme()
   const [editing, setEditing] = useState(false)
   // Which badges are showing their expanded readout. A list rather than one
   // flag per badge, so a second badge needs no new state here.
@@ -156,11 +156,17 @@ export function Home() {
       return (
         <button
           type="button"
-          onClick={toggle}
-          aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+          onClick={cycle}
+          // The icon shows the *mode*, not what's on screen — otherwise system
+          // mode is indistinguishable from whichever theme it happens to have
+          // landed on. The label carries both, since that difference is the
+          // whole point of the third state.
+          aria-label={`Theme: ${theme}${
+            theme === 'system' ? ` (currently ${resolved})` : ''
+          }. Switch to ${nextTheme(theme)}.`}
           className="border-line bg-surface hover:border-accent grid h-full w-full place-items-center border transition-colors"
         >
-          <Icon name={theme === 'dark' ? 'sun' : 'moon'} />
+          <Icon name={theme === 'system' ? 'system' : theme === 'dark' ? 'moon' : 'sun'} />
         </button>
       )
     }
