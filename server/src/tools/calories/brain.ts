@@ -40,9 +40,19 @@ function resolveClaude(): string | null {
   return null;
 }
 
+// The CLI's own words when its session has lapsed — matched against stdout
+// *and* stderr because which stream it lands on isn't reliable, and it has
+// been seen to exit 0 even while saying this.
+const AUTH_FAILURE_PATTERN = /oauth session expired|failed to authenticate|not logged in/i;
+
+function firstLine(text: string, max = 200): string {
+  const line = text.split('\n').find((l) => l.trim().length > 0) ?? '';
+  return line.trim().slice(0, max);
+}
+
 function run(prompt: string, withImage = false): Promise<string> {
   const bin = resolveClaude();
-  if (!bin) throw new Error('the estimator is not available on this server');
+  if (!bin) throw new Error('the estimator is not installed on this server');
 
   // Search is always available so a branded or restaurant item can be looked up
   // rather than guessed at; Read is added only when there is a photograph to
@@ -52,9 +62,18 @@ function run(prompt: string, withImage = false): Promise<string> {
   const args = ['-p', prompt, '--allowed-tools', tools];
 
   return new Promise((resolve, reject) => {
-    execFile(bin, args, { timeout: TIMEOUT_MS, maxBuffer: MAX_OUTPUT }, (err, stdout) => {
+    execFile(bin, args, { timeout: TIMEOUT_MS, maxBuffer: MAX_OUTPUT }, (err, stdout, stderr) => {
+      if (AUTH_FAILURE_PATTERN.test(stdout) || AUTH_FAILURE_PATTERN.test(stderr)) {
+        reject(new Error('the estimator is not logged in on the server'));
+        return;
+      }
       if (err) {
-        reject(new Error('the estimator did not respond'));
+        if (err.killed) {
+          reject(new Error('the estimator timed out'));
+          return;
+        }
+        const detail = firstLine(stderr) || firstLine(stdout);
+        reject(new Error(detail ? `the estimator failed to run: ${detail}` : 'the estimator failed to run'));
         return;
       }
       resolve(stdout);
@@ -120,7 +139,7 @@ interface Parsed {
 function parse(reply: string, fields: FieldConfig[]): Parsed {
   // Tolerate a code fence or a stray sentence around the object.
   const match = reply.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('unparseable');
+  if (!match) throw new Error("the estimator's reply could not be read");
 
   const body = JSON.parse(match[0]) as Partial<Parsed>;
   const values: Record<string, number> = {};
@@ -159,12 +178,14 @@ async function estimate(transcript: string[], imagePath?: string): Promise<Parse
   const withImage = imagePath !== undefined;
 
   return serialise(async () => {
+    // A run() failure — auth, a missing binary, a timeout — is the same
+    // problem every time, so it isn't retried; it would just cost another 90
+    // seconds to fail the same way twice. Only a bad reply from a successful
+    // run is retried, since that's usually a one-off.
+    const output = await run(prompt, withImage);
     try {
-      return parse(await run(prompt, withImage), fields);
-    } catch (first) {
-      // One retry, because a malformed reply is usually a one-off. Twice in a
-      // row is a real problem and shouldn't cost another 90 seconds.
-      if (first instanceof Error && first.message === 'the estimator did not respond') throw first;
+      return parse(output, fields);
+    } catch {
       return parse(await run(prompt, withImage), fields);
     }
   });
