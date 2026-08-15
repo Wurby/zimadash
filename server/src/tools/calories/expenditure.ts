@@ -39,6 +39,23 @@ const ALPHA = 0.25;
 /** Below this many days there is no distribution worth reasoning about. */
 const OUTLIER_MIN_SAMPLE = 10;
 
+/**
+ * At MIN_DAYS the TDEE estimate is still noisy, so applying the full selected
+ * deficit immediately can land on an unrealistically aggressive target (e.g.
+ * 1200 kcal or lower). Instead the applied rate ramps from a quarter of the
+ * selected rate at MIN_DAYS up to the full rate by WINDOW_DAYS. The climb
+ * front-loads on sqrt() rather than going linearly, because each early paired
+ * day cuts the uncertainty in the TDEE estimate faster than a later one does.
+ */
+const MIN_CONFIDENCE_FRACTION = 0.25;
+
+function confidenceScaledRate(rateLbPerWeek: LossRate, pairedDays: number): number {
+  const progress = (pairedDays - MIN_DAYS) / (WINDOW_DAYS - MIN_DAYS);
+  const confidence = Math.sqrt(Math.min(1, Math.max(0, progress)));
+  const fraction = MIN_CONFIDENCE_FRACTION + (1 - MIN_CONFIDENCE_FRACTION) * confidence;
+  return rateLbPerWeek * fraction;
+}
+
 const pad = (n: number): string => String(n).padStart(2, '0');
 
 function addDays(dayKey: string, days: number): string {
@@ -140,8 +157,9 @@ export function computeExpenditure(
   const goal = settings.goalLb;
   const atGoal = goal !== null && latestTrend !== null && latestTrend <= goal;
 
-  // At goal it holds steady rather than carrying on cutting.
-  const rate: LossRate | 0 = atGoal || goal === null ? 0 : settings.rateLbPerWeek;
+  // At goal it holds steady rather than carrying on cutting. Otherwise the
+  // deficit is scaled by how much paired data backs the TDEE estimate.
+  const rate = atGoal || goal === null ? 0 : confidenceScaledRate(settings.rateLbPerWeek, counted.length);
   const target = Math.round(tdee - (rate * KCAL_PER_LB) / 7);
 
   let projectedDate: string | null = null;
