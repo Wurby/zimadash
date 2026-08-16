@@ -16,6 +16,12 @@ Gaps and bugs in things that already work. Each one has an obvious fix and none
 is a project — this is the list to raid when there's an hour spare. Roughly
 best-first.
 
+- [ ] Get `ZIMADASH_INBOX_ROOT` onto zima. There's no tracked mechanism today
+      for any `ZIMADASH_*` var beyond `PORT` (`deploy/service.template` sets
+      only that), so `ZIMADASH_CLAUDE_BIN`/`ZIMADASH_PIPER_BIN` must already
+      reach the box some undocumented way. The inbox has no fallback for its
+      root — deliberately, guessing at a filesystem path is worse than
+      refusing to run — so it stays unconfigured until this is resolved
 - [ ] The Log tab stops at a fortnight. Reach any entry, not just recent ones —
       a month or date-range picker rather than a fixed window
 - [ ] A way to reset or change the PIN from the UI rather than by SSH
@@ -343,5 +349,28 @@ through `$ORIGIN`, so a symlink is enough. **`extra/piper` in the Arch repos is
 a gaming-mouse configurator**, an entirely different project, and the newer
 `piper1-gpl` ships Python wheels rather than a binary, which on Arch means venv
 juggling for no gain.
+
+**The inbox.** A file-drop tool, prompted by needing to hand a non-markdown
+file (an audio recording) to the vault outside the chat-based tooling that can
+only write notes. The rules that govern it live in AGENTS.md under _The
+inbox_; this is what got built.
+
+The design fork that mattered: no fixed destination list. Rather than
+hardcoding folders, the model is pointed at `ZIMADASH_INBOX_ROOT` and told to
+read `AGENTS.md` there first — the same convention this repo uses on itself —
+then explore with `Glob`. It only ever returns a decision; the server
+validates the chosen path and performs the write, the same judgement/execution
+split as the trainer's weight snapping.
+
+Fire-and-forget end to end: the tile confirms the moment bytes are safely on
+disk (staged in `DATA_DIR`, not `os.tmpdir()`, since this file _is_ the
+payload) and files in the background with no polling UI. Never silently
+dropped — low confidence or a failed validation lands the file in
+`Unsorted/`, and a real failure keeps the bytes in `incoming/`; both get a
+logged reason, checkable from the tool's own View.
+
+`ZIMADASH_INBOX_ROOT` has no default and there's no tracked mechanism yet for
+getting it (or `ZIMADASH_CLAUDE_BIN`/`ZIMADASH_PIPER_BIN`) onto the box —
+deploy-side env var provisioning was deliberately left for later.
 
 Phase numbering stopped here — everything above is a tool, not a phase.

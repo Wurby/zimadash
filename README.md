@@ -169,6 +169,12 @@ safe.
 That directory is the only thing on the server that can't be rebuilt from this
 repo. Back it up.
 
+The inbox tool writes **outside** that data directory too — into whatever
+filesystem location `ZIMADASH_INBOX_ROOT` points at (a vault, or wherever else
+files should land). There's no default: it must be set in the environment the
+server actually runs in, or the tool reports itself unconfigured rather than
+guessing at a path.
+
 ---
 
 ## Deploying

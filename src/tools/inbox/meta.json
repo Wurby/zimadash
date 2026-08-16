@@ -1,0 +1,14 @@
+{
+  "slug": "inbox",
+  "name": "Inbox",
+  "shortName": "Inbox",
+  "description": "Drop a file, it gets filed",
+  "themeColor": "#075985",
+  "backgroundColor": "#f8fafc",
+  "glyph": "▤",
+  "size": {
+    "sm": [6, 4],
+    "md": [4, 4],
+    "lg": [4, 4]
+  }
+}

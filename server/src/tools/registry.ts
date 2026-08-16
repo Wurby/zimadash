@@ -1,6 +1,7 @@
 import type { Router } from 'express';
 import calories from './calories/index.js';
 import countdowns from './countdowns.js';
+import inbox from './inbox/index.js';
 import lasttime from './lasttime.js';
 import scratch from './scratch.js';
 import trainer from './trainer/index.js';
@@ -24,6 +25,7 @@ export interface ServerTool {
 export const serverTools: ServerTool[] = [
   calories,
   countdowns,
+  inbox,
   lasttime,
   scratch,
   trainer,
