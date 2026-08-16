@@ -330,6 +330,45 @@ is used is **the first `.onnx` alphabetically**, which is arbitrary rather than 
 preference: swapping voices means removing the old one, or pinning with
 `ZIMADASH_PIPER_VOICE`.
 
+## The inbox
+
+The third tool to shell out to a model, and the first that writes outside
+`DATA_DIR`.
+
+**Drop a file, the brain files it.** No fixed destination list — the model is
+pointed at `ZIMADASH_INBOX_ROOT` (no fallback, no default; guessing at a path
+on Joshua's filesystem is worse than refusing to run) and told to read
+`AGENTS.md` there first, the same way this file orients a coding agent in this
+repo. It explores with `Glob` from there, using the optional instructions text
+when Josh gave one.
+
+**Grant: `Read,Glob`, nothing else.** Not `Write`/`Edit`/`Bash` — the model
+returns a decision (folder, filename, confidence, one sentence why), and the
+server performs the actual move. Same boundary as the trainer's weight
+snapping: the model chooses, code executes, and that boundary is what makes
+validating the chosen path worth doing. Not `WebSearch`/`WebFetch` — filing a
+local file needs no network.
+
+**Staged in `DATA_DIR`, not `os.tmpdir()`.** This is a deliberate divergence
+from the estimator's photo handling: a meal photo is ephemeral input, but an
+inbox upload _is_ the payload and has to survive a dead brain, a full disk, or
+the box rebooting mid-job. It lands in `DATA_DIR/inbox/incoming/` before the
+upload even gets a 202 back, and placement afterward is a rename, not a second
+write. A startup sweep marks anything still `working` after a restart as
+`failed` — the bytes are never lost, just not yet filed.
+
+**Fire-and-forget, both directions.** The upload confirms the moment the bytes
+are safely on disk; placement happens in the background with no polling UI.
+`ambient`, not `event-driven`, on the client: a row moves `working → placed` on
+its own within a couple of minutes, which is what makes the tile's ordinary
+poll double as the status check.
+
+**Never silently dropped.** Low confidence, an unparseable reply, or a chosen
+path that fails validation all land the file in `<root>/Unsorted/` — never
+lost — with a logged reason. A real failure (root unconfigured, disk full,
+CLI down) leaves the bytes in `incoming/` and logs why. `DELETE
+/api/tools/inbox/:id` only dismisses the log row, never the filed file.
+
 ## Stack
 
 - React 19 + TypeScript + Vite, Tailwind v4 (`@theme inline` tokens in

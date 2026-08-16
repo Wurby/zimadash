@@ -125,3 +125,40 @@ export async function apiBlob(path: string, init: RequestInit = {}): Promise<Blo
 
   return res.blob()
 }
+
+/**
+ * The same call, for a binary *request* body — a file upload.
+ *
+ * It exists so a binary endpoint doesn't become the one place a component
+ * reaches for `fetch` itself, mirroring what apiBlob does for a binary
+ * response. Content-Type is pinned to application/octet-stream explicitly
+ * rather than left to the File's own MIME type — a fetch body of a `.json`
+ * file would otherwise send `application/json`, indistinguishable from an
+ * ordinary API call to the server's body parser.
+ */
+export async function apiUpload<T>(
+  path: string,
+  file: File,
+  extraHeaders: Record<string, string> = {},
+): Promise<T> {
+  const token = getToken()
+  const headers = new Headers(extraHeaders)
+  headers.set('Accept', 'application/json')
+  headers.set('Content-Type', 'application/octet-stream')
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+
+  const res = await fetch(path, { method: 'POST', headers, body: file })
+  const body = await res.json().catch(() => ({}) as Record<string, unknown>)
+
+  if (res.status === 401 && !path.startsWith('/api/auth/')) {
+    clearToken()
+    window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT))
+  }
+
+  if (!res.ok) {
+    const message = typeof body.error === 'string' ? body.error : res.statusText
+    throw new ApiError(message, res.status, body)
+  }
+
+  return body as T
+}
