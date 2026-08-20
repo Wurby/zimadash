@@ -7,6 +7,9 @@
 #
 # Placeholders: @REMOTE_DIR@  @NODE_BIN@  @PORT@
 #
+# ZIMADASH_INBOX_ROOT is %h/inbox — the unit user's home, not a path baked into
+# the repo. The inbox code still has no default; without this line it refuses.
+#
 # A user unit needs lingering enabled for the account it runs as, so it starts
 # without an interactive login and the deploy can drive systemctl over SSH:
 #
@@ -20,6 +23,7 @@ After=network.target
 Type=simple
 WorkingDirectory=%h/@REMOTE_DIR@/server
 Environment=PORT=@PORT@
+Environment=ZIMADASH_INBOX_ROOT=%h/inbox
 ExecStart=@NODE_BIN@ %h/@REMOTE_DIR@/server/dist/index.js
 Restart=on-failure
 RestartSec=5

@@ -336,11 +336,12 @@ The third tool to shell out to a model — also via `grok -p` — and the first
 that writes outside `DATA_DIR`.
 
 **Drop a file, the brain files it.** No fixed destination list — the model is
-pointed at `ZIMADASH_INBOX_ROOT` (no fallback, no default; guessing at a path
-on Joshua's filesystem is worse than refusing to run) and told to read
+pointed at `ZIMADASH_INBOX_ROOT` (no fallback, no default in code; guessing at
+a path on Joshua's filesystem is worse than refusing to run) and told to read
 `AGENTS.md` there first, the same way this file orients a coding agent in this
 repo. It explores with `list_dir` and `grep` from there, using the optional
-instructions text when Josh gave one.
+instructions text when Josh gave one. The systemd unit supplies the env var
+(`%h/inbox`) so a deploy cannot forget it.
 
 **Grant: `read_file,grep,list_dir`, nothing else.** Not write, not shell — the
 model returns a decision (folder, filename, confidence, one sentence why), and

@@ -16,14 +16,6 @@ Gaps and bugs in things that already work. Each one has an obvious fix and none
 is a project — this is the list to raid when there's an hour spare. Roughly
 best-first.
 
-- [ ] Get `ZIMADASH_INBOX_ROOT` onto zima. There's no tracked mechanism today
-      for any `ZIMADASH_*` var beyond `PORT` (`deploy/service.template` sets
-      only that), so `ZIMADASH_GROK_BIN`/`ZIMADASH_PIPER_BIN` must already
-      reach the box some undocumented way. The three brains find `grok` on the
-      installer PATH (`~/.local/bin`, `~/.grok/bin`) without an override; the
-      inbox has no fallback for its root — deliberately, guessing at a
-      filesystem path is worse than refusing to run — so it stays unconfigured
-      until this is resolved
 - [ ] The Log tab stops at a fortnight. Reach any entry, not just recent ones —
       a month or date-range picker rather than a fixed window
 - [ ] A way to reset or change the PIN from the UI rather than by SSH
@@ -188,8 +180,8 @@ reasoning doesn't get re-litigated — don't pick one up until its trigger fires
 
 ## To be reviewed
 
-A holding pen for things Claude noticed while building but Joshua hasn't ruled
-on. Nothing here is agreed work — it gets promoted, or it gets deleted.
+A holding pen for things noticed while building but Joshua hasn't ruled on.
+Nothing here is agreed work — it gets promoted, or it gets deleted.
 
 _Empty. Last cleared after the tile-sizing work._
 
@@ -372,8 +364,16 @@ dropped — low confidence or a failed validation lands the file in
 `Unsorted/`, and a real failure keeps the bytes in `incoming/`; both get a
 logged reason, checkable from the tool's own View.
 
-`ZIMADASH_INBOX_ROOT` has no default and there's no tracked mechanism yet for
-getting it (or `ZIMADASH_GROK_BIN`/`ZIMADASH_PIPER_BIN`) onto the box —
-deploy-side env var provisioning was deliberately left for later.
+`ZIMADASH_INBOX_ROOT` is set by the systemd unit to `%h/inbox`. The other
+`ZIMADASH_*` vars (`ZIMADASH_GROK_BIN`/`ZIMADASH_PIPER_BIN`) still have no
+tracked provisioning — the brains find `grok` on the installer PATH without an
+override.
+
+**Grok Build.** The estimator, trainer, inbox, and the deploy commit-message
+step all shell out to `grok -p` on the subscription that already exists, not a
+metered key. Grants stay tight: `web_search` (plus `read_file` for a photo) on
+calories; nothing on the trainer; `read_file,grep,list_dir` on the inbox.
+Verified in use: a text meal, a photo meal, a trainer model plan, and an inbox
+drop.
 
 Phase numbering stopped here — everything above is a tool, not a phase.

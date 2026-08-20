@@ -292,6 +292,8 @@ npm run deploy -- --install-service
 
 Don't hand-edit the copy on the box — the next render overwrites it. A user unit
 needs lingering enabled for its account so it runs without an interactive login.
+The unit also sets `ZIMADASH_INBOX_ROOT` to `%h/inbox`; the inbox code has no
+default of its own.
 
 ---
 
