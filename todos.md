@@ -16,8 +16,6 @@ Gaps and bugs in things that already work. Each one has an obvious fix and none
 is a project — this is the list to raid when there's an hour spare. Roughly
 best-first.
 
-- [ ] The Log tab stops at a fortnight. Reach any entry, not just recent ones —
-      a month or date-range picker rather than a fixed window
 - [ ] A way to reset or change the PIN from the UI rather than by SSH
 - [ ] Write a real `actions.json` (Homebridge scenes, robovac). The plumbing is
       done and untested against a live endpoint; no action is configured yet
@@ -198,6 +196,13 @@ The tracker went past its original plan and now also does: estimates from a
 photograph, correcting a logged meal by describing what was wrong rather than
 retyping numbers, a macro-derived calorie figure offered as a suggestion, and
 one-tap re-logging of recent meals.
+
+**The Log tab.** Lands on today. Breadcrumbs zoom day → week → month → year
+with one calendar (year is twelve months; month and week are days). Week shows
+that week's meals as pills (tap-again to log them to today). Search covers all
+history by name and assumptions. Today’s Again chips are a weekly Grok cluster
+of fuzzy photo names, averaged in code, with the old exact-name list as
+fallback.
 
 **Phase 3 (the grid).** The header is gone; tools, actions, the theme toggle and
 the system readout all live on one grid whose unit is measured per surface. Both

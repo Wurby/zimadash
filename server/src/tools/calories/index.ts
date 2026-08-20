@@ -1,7 +1,17 @@
 import { Router } from 'express';
 import type { ServerTool } from '../registry.js';
-import type { DaySummary, Entry, Settings } from '../../shared/calories.js';
-import { RANGE_DAYS, type RangeKey } from '../../shared/calories.js';
+import type { DaySummary, Entry, LogGrain, LogSummary, Settings } from '../../shared/calories.js';
+import {
+  RANGE_DAYS,
+  endOfMonth,
+  endOfWeek,
+  endOfYear,
+  monthKey,
+  startOfMonth,
+  startOfWeek,
+  startOfYear,
+  type RangeKey,
+} from '../../shared/calories.js';
 import { readSettings, writeSettings, trackedFields } from './settings.js';
 import { allReadings, deleteReading, putReading } from './weight.js';
 import { computeExpenditure, trendSeries } from './expenditure.js';
@@ -21,8 +31,10 @@ import {
   findEntry,
   patchEntry,
   recentEntries,
+  searchEntries,
   shiftDayKey,
 } from './storage.js';
+import { cachedChips, startClusterLoop } from './clusters.js';
 
 /**
  * Everything under /api/tools/calories. Owns its own files in DATA_DIR and
@@ -41,6 +53,40 @@ function totalsFor(entries: Entry[]): Record<string, number> {
   }
   return totals;
 }
+
+function summarise(entries: Entry[]): LogSummary {
+  const days = new Set(entries.map((entry) => dayKeyFor(entry.at)));
+  const calories = entries.reduce((sum, entry) => sum + (entry.values.calories ?? 0), 0);
+  const daysLogged = days.size;
+  return {
+    meals: entries.length,
+    daysLogged,
+    averageDailyCalories: daysLogged === 0 ? 0 : Math.round((calories / daysLogged) * 10) / 10,
+  };
+}
+
+function windowFor(grain: LogGrain, date: string): { from: string; to: string } {
+  if (grain === 'day') return { from: date, to: date };
+  if (grain === 'week') return { from: startOfWeek(date), to: endOfWeek(date) };
+  if (grain === 'month') return { from: startOfMonth(date), to: endOfMonth(date) };
+  return { from: startOfYear(date), to: endOfYear(date) };
+}
+
+function latestPills(entries: Entry[]): { description: string; values: Record<string, number> }[] {
+  const newest = [...entries].sort((a, b) => b.at - a.at);
+  const seen = new Set<string>();
+  const pills: { description: string; values: Record<string, number> }[] = [];
+  for (const entry of newest) {
+    const key = entry.description.trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    pills.push({ description: entry.description, values: entry.values });
+  }
+  return pills;
+}
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const GRAINS = new Set<LogGrain>(['day', 'week', 'month', 'year']);
 
 // ─── Settings ────────────────────────────────────────────────────────────────
 
@@ -93,15 +139,53 @@ router.get('/range/:range', (req, res) => {
   });
 });
 
-/** The log tab: about two weeks of entries, newest first. */
-router.get('/log', (_req, res) => {
-  const today = dayKeyFor(Date.now());
-  const entries = entriesInRange(shiftDayKey(today, -13), today);
-  res.json({ entries: entries.reverse() });
+router.get('/log/search', (req, res) => {
+  const q = typeof req.query.q === 'string' ? req.query.q : '';
+  const hits = searchEntries(q).map((entry) => ({
+    date: dayKeyFor(entry.at),
+    entry,
+  }));
+  res.json({ hits });
 });
 
-/** Distinct recent meals, for one-tap re-logging without touching the brain. */
+/** The log tab: one grain (day/week/month/year) around a date. */
+router.get('/log', (req, res) => {
+  const today = dayKeyFor(Date.now());
+  const grain = (typeof req.query.grain === 'string' ? req.query.grain : 'day') as LogGrain;
+  if (!GRAINS.has(grain)) {
+    res.status(400).json({ error: `unknown grain "${req.query.grain}"` });
+    return;
+  }
+
+  const date =
+    typeof req.query.date === 'string' && DATE_RE.test(req.query.date) ? req.query.date : today;
+  const { from, to } = windowFor(grain, date);
+  const entries = entriesInRange(from, to);
+  const loggedDays = [...new Set(entries.map((entry) => dayKeyFor(entry.at)))].sort();
+
+  res.json({
+    grain,
+    today,
+    date,
+    from,
+    to,
+    summary: summarise(entries),
+    totals: totalsFor(entries),
+    entries: grain === 'day' ? [...entries].reverse() : [],
+    pills: grain === 'week' ? latestPills(entries) : [],
+    loggedDays,
+    loggedMonths: [...new Set(loggedDays.map((day) => monthKey(day)))],
+  });
+});
+
+/** Distinct meals for one-tap re-logging. Clustered when the weekly pass has run. */
 router.get('/recent', (_req, res) => {
+  const clustered = cachedChips();
+  if (clustered) {
+    res.json({ meals: clustered });
+    return;
+  }
+
   const seen = new Set<string>();
   const meals = recentEntries(60)
     .filter((entry) => entry.description.trim() && Object.keys(entry.values).length > 0)
@@ -111,7 +195,7 @@ router.get('/recent', (_req, res) => {
       seen.add(key);
       return true;
     })
-    .slice(0, 8)
+    .slice(0, 12)
     .map(({ description, values }) => ({ description, values }));
 
   res.json({ meals });
@@ -341,6 +425,8 @@ router.delete('/entries/:id', (req, res) => {
   }
   res.json({ ok: true });
 });
+
+startClusterLoop();
 
 const tool: ServerTool = { slug: 'calories', router };
 export default tool;

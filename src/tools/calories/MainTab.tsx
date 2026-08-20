@@ -416,7 +416,7 @@ export function MainTab({ settings }: { settings: Settings | null }) {
                 type="button"
                 onClick={() => relog(meal.description, meal.values)}
                 disabled={busy}
-                className="border-line hover:border-accent bg-surface flex items-center gap-2 border px-3 py-1.5 text-sm disabled:opacity-50"
+                className="border-line hover:border-accent bg-surface flex min-h-11 items-center gap-2 border px-3 text-sm disabled:opacity-50"
               >
                 {meal.description}
                 <span className="text-ink-dim font-mono text-xs tabular-nums">

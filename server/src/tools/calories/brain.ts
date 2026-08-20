@@ -87,15 +87,10 @@ function failedAuth(stdout: string, stderr: string): boolean {
   }
 }
 
-function run(prompt: string, withImage = false): Promise<string> {
+export function complete(prompt: string, tools: string, timeoutMs = TIMEOUT_MS): Promise<string> {
   const bin = resolveGrok();
   if (!bin) throw new Error('the estimator is not installed on this server');
 
-  // Search is always available so a branded or restaurant item can be looked up
-  // rather than guessed at; read_file is added only when there is a photograph
-  // to look at. Nothing else is ever allowed — in particular not web_fetch,
-  // which would let a crafted description send this box to an arbitrary URL.
-  const tools = withImage ? 'web_search,read_file' : 'web_search';
   const args = [
     '-p',
     prompt,
@@ -110,6 +105,7 @@ function run(prompt: string, withImage = false): Promise<string> {
     '--cwd',
     scratchDir(),
   ];
+  if (!tools) args.push('--disable-web-search');
 
   const env = {
     ...process.env,
@@ -121,7 +117,7 @@ function run(prompt: string, withImage = false): Promise<string> {
     execFile(
       bin,
       args,
-      { timeout: TIMEOUT_MS, maxBuffer: MAX_OUTPUT, env },
+      { timeout: timeoutMs, maxBuffer: MAX_OUTPUT, env },
       (err, stdout, stderr) => {
         if (failedAuth(stdout, stderr)) {
           reject(new Error('the estimator is not logged in on the server'));
@@ -144,6 +140,14 @@ function run(prompt: string, withImage = false): Promise<string> {
       },
     );
   });
+}
+
+function run(prompt: string, withImage = false): Promise<string> {
+  // Search is always available so a branded or restaurant item can be looked up
+  // rather than guessed at; read_file is added only when there is a photograph
+  // to look at. Nothing else is ever allowed — in particular not web_fetch,
+  // which would let a crafted description send this box to an arbitrary URL.
+  return complete(prompt, withImage ? 'web_search,read_file' : 'web_search');
 }
 
 function describeFields(fields: FieldConfig[]): string {

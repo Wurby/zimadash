@@ -1,6 +1,9 @@
 import crypto from 'node:crypto';
 import { listDataFiles, readJson, writeJson } from '../../paths.js';
 import type { Entry } from '../../shared/calories.js';
+import { dayKeyFromMs, monthKey, shiftDayKey } from '../../shared/calories.js';
+
+export { dayKeyFromMs as dayKeyFor, shiftDayKey };
 
 /**
  * Entries on disk: one JSON file per month under `calories/` in DATA_DIR.
@@ -16,38 +19,11 @@ import type { Entry } from '../../shared/calories.js';
 const DIR = 'calories';
 const VERSION = 1;
 
-/**
- * A day ends at 4am, not midnight. A 1am snack belongs to the night you were
- * still awake for, not to the morning that hasn't started — logging it against
- * a fresh day wrecks the day that hasn't begun and flatters the one you
- * actually overate on.
- */
-const ROLLOVER_HOUR = 4;
-
 interface MonthFile {
   version: number;
   entries: Entry[];
 }
 
-const pad = (n: number): string => String(n).padStart(2, '0');
-
-/** The YYYY-MM-DD a timestamp belongs to, once the 4am rollover is applied. */
-export function dayKeyFor(at: number): string {
-  const d = new Date(at);
-  if (d.getHours() < ROLLOVER_HOUR) d.setDate(d.getDate() - 1);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-/** Walk back n days from a day key, staying on the rollover grid. */
-export function shiftDayKey(dayKey: string, days: number): string {
-  const [y, m, d] = dayKey.split('-').map(Number);
-  // Noon avoids any daylight-saving edge landing on the wrong date.
-  const date = new Date(y, m - 1, d, 12);
-  date.setDate(date.getDate() + days);
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
-
-const monthOf = (dayKey: string): string => dayKey.slice(0, 7);
 const fileFor = (month: string): string => `${DIR}/${month}.json`;
 
 /**
@@ -78,10 +54,10 @@ function writeMonth(month: string, file: MonthFile): void {
 }
 
 export function addEntry(input: Omit<Entry, 'id'>): Entry {
-  const dayKey = dayKeyFor(input.at);
+  const dayKey = dayKeyFromMs(input.at);
   const entry: Entry = { ...input, id: makeId(dayKey) };
 
-  const month = monthOf(dayKey);
+  const month = monthKey(dayKey);
   const file = readMonth(month);
   file.entries.push(entry);
   writeMonth(month, file);
@@ -120,14 +96,14 @@ export function deleteEntry(id: string): boolean {
 export function entriesInRange(fromDay: string, toDay: string): Entry[] {
   const months = new Set<string>();
   for (let day = fromDay; day <= toDay; day = shiftDayKey(day, 1)) {
-    months.add(monthOf(day));
+    months.add(monthKey(day));
   }
 
   return [...months]
     .sort()
     .flatMap((month) => readMonth(month).entries)
     .filter((entry) => {
-      const day = dayKeyFor(entry.at);
+      const day = dayKeyFromMs(entry.at);
       return day >= fromDay && day <= toDay;
     })
     .sort((a, b) => a.at - b.at);
@@ -152,4 +128,39 @@ export function recentEntries(limit: number): Entry[] {
   }
 
   return found.sort((a, b) => b.at - a.at).slice(0, limit);
+}
+
+/** Every named entry on disk, oldest first. Used by search and clustering. */
+export function allEntries(): Entry[] {
+  const months = listDataFiles(DIR)
+    .filter((name) => name.endsWith('.json'))
+    .map((name) => name.replace(/\.json$/, ''))
+    .sort();
+
+  return months.flatMap((month) => readMonth(month).entries).sort((a, b) => a.at - b.at);
+}
+
+export function searchEntries(query: string, limit = 50): Entry[] {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return [];
+
+  const hits: Entry[] = [];
+  const months = listDataFiles(DIR)
+    .filter((name) => name.endsWith('.json'))
+    .map((name) => name.replace(/\.json$/, ''))
+    .sort()
+    .reverse();
+
+  for (const month of months) {
+    const batch = readMonth(month)
+      .entries.filter((entry) => {
+        if (entry.description.toLowerCase().includes(needle)) return true;
+        return (entry.assumptions ?? '').toLowerCase().includes(needle);
+      })
+      .sort((a, b) => b.at - a.at);
+    hits.push(...batch);
+    if (hits.length >= limit) break;
+  }
+
+  return hits.slice(0, limit);
 }

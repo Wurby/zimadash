@@ -177,3 +177,79 @@ export const RANGE_LABELS: Record<RangeKey, string> = {
   half: 'Half year',
   year: 'Year',
 };
+
+export type LogGrain = 'day' | 'week' | 'month' | 'year';
+
+export interface LogSummary {
+  meals: number;
+  daysLogged: number;
+  averageDailyCalories: number;
+}
+
+/** A day ends at 4am, not midnight. Same rule the storage layer uses. */
+export const DAY_ROLLOVER_HOUR = 4;
+
+const pad = (n: number): string => String(n).padStart(2, '0');
+
+export function dayKeyFromMs(at: number): string {
+  const d = new Date(at);
+  if (d.getHours() < DAY_ROLLOVER_HOUR) d.setDate(d.getDate() - 1);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+export function shiftDayKey(dayKey: string, days: number): string {
+  const [y, m, d] = dayKey.split('-').map(Number);
+  const date = new Date(y, m - 1, d, 12);
+  date.setDate(date.getDate() + days);
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+export function weekdaySunday(dayKey: string): number {
+  const [y, m, d] = dayKey.split('-').map(Number);
+  return new Date(y, m - 1, d, 12).getDay();
+}
+
+export function startOfWeek(dayKey: string): string {
+  return shiftDayKey(dayKey, -weekdaySunday(dayKey));
+}
+
+export function endOfWeek(dayKey: string): string {
+  return shiftDayKey(startOfWeek(dayKey), 6);
+}
+
+export function startOfMonth(dayKey: string): string {
+  return `${dayKey.slice(0, 7)}-01`;
+}
+
+export function endOfMonth(dayKey: string): string {
+  const [y, m] = dayKey.split('-').map(Number);
+  const last = new Date(y, m, 0, 12);
+  return `${last.getFullYear()}-${pad(last.getMonth() + 1)}-${pad(last.getDate())}`;
+}
+
+export function startOfYear(dayKey: string): string {
+  return `${dayKey.slice(0, 4)}-01-01`;
+}
+
+export function endOfYear(dayKey: string): string {
+  return `${dayKey.slice(0, 4)}-12-31`;
+}
+
+export function monthKey(dayKey: string): string {
+  return dayKey.slice(0, 7);
+}
+
+export const MONTH_LABELS = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+] as const;

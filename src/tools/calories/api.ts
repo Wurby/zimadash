@@ -4,6 +4,8 @@ import type {
   Entry,
   Expenditure,
   FieldConfig,
+  LogGrain,
+  LogSummary,
   PendingEstimate,
   RangeKey,
   Settings,
@@ -76,7 +78,30 @@ export function withEffectiveGoal(
 
 export const getRange = (range: RangeKey) => api<RangeData>(`${BASE}/range/${range}`)
 
-export const getLog = () => api<{ entries: Entry[] }>(`${BASE}/log`)
+export interface LogView {
+  grain: LogGrain
+  today: string
+  date: string
+  from: string
+  to: string
+  summary: LogSummary
+  totals: Record<string, number>
+  entries: Entry[]
+  pills: RecentMeal[]
+  loggedDays: string[]
+  loggedMonths: string[]
+}
+
+export interface LogHit {
+  date: string
+  entry: Entry
+}
+
+export const getLogView = (grain: LogGrain, date: string) =>
+  api<LogView>(`${BASE}/log?grain=${grain}&date=${date}`)
+
+export const searchLog = (q: string) =>
+  api<{ hits: LogHit[] }>(`${BASE}/log/search?q=${encodeURIComponent(q)}`)
 
 export const getRecent = () => api<{ meals: RecentMeal[] }>(`${BASE}/recent`)
 
