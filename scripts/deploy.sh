@@ -7,7 +7,7 @@
 # user unit. All of the intelligence lives here.
 #
 # Outstanding work is committed and pushed first, so whatever ships can always
-# be traced back to a commit. Claude writes the commit message; --no-git skips
+# be traced back to a commit. grok -p writes the commit message; --no-git skips
 # the whole step.
 #
 # Usage:  npm run deploy [-- <flags>]
@@ -95,13 +95,13 @@ ok "ssh to $REMOTE_HOST"
 # What ships should always be reconstructible from a commit, so anything
 # outstanding is committed and pushed before the artifact is built.
 #
-# Claude writes the message from the staged diff and does nothing else — the
+# grok -p writes the message from the staged diff and does nothing else — the
 # staging, committing, and pushing are plain git. Handing it the whole job would
 # mean granting a headless agent permission to run git against your repo during
 # a deploy, and the failure modes get much harder to see. This way the only
 # thing that can go wrong is a bad message, and that falls back to a generic one.
 
-# Ask Claude for a commit message describing what is currently staged.
+# Ask Grok for a commit message describing what is currently staged.
 commit_message() {
   local diff prompt msg
   diff="$(
@@ -118,7 +118,16 @@ Output only the message itself — no code fences, no preamble, no sign-off.
 
 $diff"
 
-  msg="$(claude -p "$prompt" 2>/dev/null || true)"
+  msg="$(
+    GROK_DISABLE_AUTOUPDATER=1 GROK_MEMORY=0 \
+      grok -p "$prompt" \
+      --tools '' \
+      --no-subagents \
+      --no-plan \
+      --disable-web-search \
+      --verbatim \
+      2>/dev/null || true
+  )"
   # Drop any code fences it wrapped the message in, then leading blank lines.
   printf '%s' "$msg" | sed '/^```/d' | sed '/./,$!d'
 }
@@ -137,11 +146,11 @@ sync_git() {
     info "staging:"
     git diff --cached --stat | sed 's/^/      /'
 
-    if command -v claude >/dev/null; then
+    if command -v grok >/dev/null; then
       info "writing a commit message…"
       message="$(commit_message)"
     else
-      warn "claude not found — using a generic message"
+      warn "grok not found — using a generic message"
       message=""
     fi
     [ -n "$message" ] || message="chore: pre-deploy snapshot"

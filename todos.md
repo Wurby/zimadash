@@ -18,10 +18,12 @@ best-first.
 
 - [ ] Get `ZIMADASH_INBOX_ROOT` onto zima. There's no tracked mechanism today
       for any `ZIMADASH_*` var beyond `PORT` (`deploy/service.template` sets
-      only that), so `ZIMADASH_CLAUDE_BIN`/`ZIMADASH_PIPER_BIN` must already
-      reach the box some undocumented way. The inbox has no fallback for its
-      root — deliberately, guessing at a filesystem path is worse than
-      refusing to run — so it stays unconfigured until this is resolved
+      only that), so `ZIMADASH_GROK_BIN`/`ZIMADASH_PIPER_BIN` must already
+      reach the box some undocumented way. The three brains find `grok` on the
+      installer PATH (`~/.local/bin`, `~/.grok/bin`) without an override; the
+      inbox has no fallback for its root — deliberately, guessing at a
+      filesystem path is worse than refusing to run — so it stays unconfigured
+      until this is resolved
 - [ ] The Log tab stops at a fortnight. Reach any entry, not just recent ones —
       a month or date-range picker rather than a fixed window
 - [ ] A way to reset or change the PIN from the UI rather than by SSH
@@ -156,8 +158,9 @@ The design fork is unchanged: one habit large, or every habit small.
 Each of these is blocked on a trigger, not on effort. They're recorded so the
 reasoning doesn't get re-litigated — don't pick one up until its trigger fires.
 
-- **Swap the estimator from the Claude CLI to the API.** Roughly a third of the
-  latency, at the cost of a metered key. _Trigger:_ the wait annoys.
+- **Swap the estimator from Grok Build (`grok -p`) to the API.** Roughly a
+  third of the latency, at the cost of a metered key. _Trigger:_ the wait
+  annoys.
 - **Server-sent events instead of polling.** _Trigger:_ the wall display wants
   it; nothing else does.
 - **Settle the calorie target on a weekly cadence**, with a recompute-now
@@ -358,7 +361,7 @@ inbox_; this is what got built.
 The design fork that mattered: no fixed destination list. Rather than
 hardcoding folders, the model is pointed at `ZIMADASH_INBOX_ROOT` and told to
 read `AGENTS.md` there first — the same convention this repo uses on itself —
-then explore with `Glob`. It only ever returns a decision; the server
+then explore with `list_dir` and `grep`. It only ever returns a decision; the server
 validates the chosen path and performs the write, the same judgement/execution
 split as the trainer's weight snapping.
 
@@ -370,7 +373,7 @@ dropped — low confidence or a failed validation lands the file in
 logged reason, checkable from the tool's own View.
 
 `ZIMADASH_INBOX_ROOT` has no default and there's no tracked mechanism yet for
-getting it (or `ZIMADASH_CLAUDE_BIN`/`ZIMADASH_PIPER_BIN`) onto the box —
+getting it (or `ZIMADASH_GROK_BIN`/`ZIMADASH_PIPER_BIN`) onto the box —
 deploy-side env var provisioning was deliberately left for later.
 
 Phase numbering stopped here — everything above is a tool, not a phase.

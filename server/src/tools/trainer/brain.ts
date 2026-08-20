@@ -15,7 +15,7 @@ import {
 } from '../../shared/trainer.js';
 
 /**
- * Planning a session by shelling out to the Claude CLI on the box.
+ * Planning a session by shelling out to Grok Build (`grok -p`) on the box.
  *
  * The same bargain the calorie estimator makes: the CLI runs on a subscription
  * that already exists, and the cost is several seconds and going dark the day
@@ -41,12 +41,13 @@ const TIMEOUT_MS = 120_000;
 const MAX_OUTPUT = 1024 * 1024;
 
 /** systemd gives the unit a minimal PATH, so the CLI has to be found by hand. */
-function resolveClaude(): string | null {
+function resolveGrok(): string | null {
   const candidates = [
-    process.env.ZIMADASH_CLAUDE_BIN,
-    path.join(os.homedir(), '.local/bin/claude'),
-    '/usr/local/bin/claude',
-    '/opt/homebrew/bin/claude',
+    process.env.ZIMADASH_GROK_BIN,
+    path.join(os.homedir(), '.local/bin/grok'),
+    path.join(os.homedir(), '.grok/bin/grok'),
+    '/usr/local/bin/grok',
+    '/opt/homebrew/bin/grok',
   ].filter((candidate): candidate is string => Boolean(candidate));
 
   for (const candidate of candidates) {
@@ -60,16 +61,58 @@ function resolveClaude(): string | null {
   return null;
 }
 
+/** An empty cwd so Grok does not walk up into the deploy tree and ingest this
+ *  repo's AGENTS.md — or the brief — as project context. */
+function scratchDir(): string {
+  const dir = path.join(os.tmpdir(), 'zimadash-planner');
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+/** `grok -p --output-format json` wraps the model's reply in `{ text }`. */
+function extractText(stdout: string): string {
+  const trimmed = stdout.trim();
+  if (!trimmed.startsWith('{')) return stdout;
+  try {
+    const body = JSON.parse(trimmed) as { text?: unknown };
+    if (typeof body.text === 'string') return body.text;
+  } catch {
+    /* the model itself replied with JSON; parse() will pick it out */
+  }
+  return stdout;
+}
+
 function run(prompt: string): Promise<string> {
-  const bin = resolveClaude();
+  const bin = resolveGrok();
   if (!bin) throw new Error('the planner is not available on this server');
+
+  const env = {
+    ...process.env,
+    GROK_DISABLE_AUTOUPDATER: '1',
+    GROK_MEMORY: '0',
+  };
 
   return new Promise((resolve, reject) => {
     execFile(
       bin,
-      ['-p', prompt, '--allowed-tools', ''],
-      { timeout: TIMEOUT_MS, maxBuffer: MAX_OUTPUT },
-      (err, stdout) => (err ? reject(new Error('the planner did not respond')) : resolve(stdout)),
+      [
+        '-p',
+        prompt,
+        '--tools',
+        '',
+        '--no-subagents',
+        '--no-plan',
+        '--disable-web-search',
+        '--always-approve',
+        '--output-format',
+        'json',
+        '--verbatim',
+        '--cwd',
+        scratchDir(),
+      ],
+      { timeout: TIMEOUT_MS, maxBuffer: MAX_OUTPUT, env },
+      (err, stdout) =>
+        err ? reject(new Error('the planner did not respond')) : resolve(extractText(stdout)),
     );
   });
 }

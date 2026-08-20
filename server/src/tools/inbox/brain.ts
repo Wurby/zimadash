@@ -4,34 +4,37 @@ import os from 'node:os';
 import path from 'node:path';
 
 /**
- * Deciding where an uploaded file belongs by shelling out to the Claude CLI on
- * the box — the third tool to make this bargain, after the estimator and the
- * trainer.
+ * Deciding where an uploaded file belongs by shelling out to Grok Build
+ * (`grok -p`) on the box — the same subscription-CLI bargain as the estimator
+ * and the trainer.
  *
  * **Judgement, not placement.** The model never writes anything. It reads
- * <root>/AGENTS.md and explores with Glob, then returns a decision — a folder,
- * a filename, a confidence, one sentence why. Our own code validates that
- * decision against the root (root.ts's resolveWithin) and performs the actual
- * move. Same boundary as the trainer's weight-snapping: the model chooses,
- * code executes — which is also what makes the traversal check worth doing.
+ * <root>/AGENTS.md and explores with list_dir/grep, then returns a decision —
+ * a folder, a filename, a confidence, one sentence why. Our own code validates
+ * that decision against the root (root.ts's resolveWithin) and performs the
+ * actual move. Same boundary as the trainer's weight-snapping: the model
+ * chooses, code executes — which is also what makes the traversal check worth
+ * doing.
  *
- * **Grant: Read,Glob, nothing else.** Read opens AGENTS.md and, for a small
- * safe-to-open file, the upload itself. Glob confirms what actually exists
- * against what the layout doc claims. No Write/Edit/Bash — a decide-only tool
- * has nothing to gain from them. No WebSearch/WebFetch — filing a local file
- * needs no network, and WebFetch stays excluded repo-wide.
+ * **Grant: read_file, grep, list_dir, nothing else.** read_file opens AGENTS.md
+ * and, for a small safe-to-open file, the upload itself. list_dir and grep
+ * confirm what actually exists against what the layout doc claims. No write,
+ * no shell — a decide-only tool has nothing to gain from them. No web_search
+ * or web_fetch — filing a local file needs no network, and web_fetch stays
+ * excluded repo-wide.
  */
 
 const TIMEOUT_MS = 180_000;
 const MAX_OUTPUT = 1024 * 1024;
 
 /** systemd gives the unit a minimal PATH, so the CLI has to be found by hand. */
-function resolveClaude(): string | null {
+function resolveGrok(): string | null {
   const candidates = [
-    process.env.ZIMADASH_CLAUDE_BIN,
-    path.join(os.homedir(), '.local/bin/claude'),
-    '/usr/local/bin/claude',
-    '/opt/homebrew/bin/claude',
+    process.env.ZIMADASH_GROK_BIN,
+    path.join(os.homedir(), '.local/bin/grok'),
+    path.join(os.homedir(), '.grok/bin/grok'),
+    '/usr/local/bin/grok',
+    '/opt/homebrew/bin/grok',
   ].filter((candidate): candidate is string => Boolean(candidate));
 
   for (const candidate of candidates) {
@@ -47,29 +50,79 @@ function resolveClaude(): string | null {
 
 // The CLI's own words when its session has lapsed — matched against stdout
 // *and* stderr because which stream it lands on isn't reliable.
-const AUTH_FAILURE_PATTERN = /oauth session expired|failed to authenticate|not logged in/i;
+const AUTH_FAILURE_PATTERN =
+  /oauth session expired|failed to authenticate|not logged in|not signed in|authentication failed|unauthorized/i;
 
 function firstLine(text: string, max = 200): string {
   const line = text.split('\n').find((l) => l.trim().length > 0) ?? '';
   return line.trim().slice(0, max);
 }
 
+/** `grok -p --output-format json` wraps the model's reply in `{ text }`. */
+function extractText(stdout: string): string {
+  const trimmed = stdout.trim();
+  if (!trimmed.startsWith('{')) return stdout;
+  try {
+    const body = JSON.parse(trimmed) as { text?: unknown };
+    if (typeof body.text === 'string') return body.text;
+  } catch {
+    /* the model itself replied with JSON; parse() will pick it out */
+  }
+  return stdout;
+}
+
+function failedAuth(stdout: string, stderr: string): boolean {
+  if (AUTH_FAILURE_PATTERN.test(stdout) || AUTH_FAILURE_PATTERN.test(stderr)) return true;
+  try {
+    const body = JSON.parse(stdout.trim()) as { type?: unknown; message?: unknown };
+    return (
+      body.type === 'error' &&
+      typeof body.message === 'string' &&
+      AUTH_FAILURE_PATTERN.test(body.message)
+    );
+  } catch {
+    return false;
+  }
+}
+
 /**
- * cwd matters here in a way it doesn't for the other two brains: Read and
- * Glob are scoped to the CLI's working directory, and without pinning it to
- * the drop root the model would explore the deployed artifact instead.
+ * cwd matters here in a way it doesn't for the other two brains: read_file,
+ * grep and list_dir are scoped to the CLI's working directory, and without
+ * pinning it to the drop root the model would explore the deployed artifact
+ * instead. The staged upload lives outside that root; grok can still open it
+ * by absolute path.
  */
 function run(prompt: string, cwd: string): Promise<string> {
-  const bin = resolveClaude();
+  const bin = resolveGrok();
   if (!bin) throw new Error('the inbox brain is not installed on this server');
+
+  const env = {
+    ...process.env,
+    GROK_DISABLE_AUTOUPDATER: '1',
+    GROK_MEMORY: '0',
+  };
 
   return new Promise((resolve, reject) => {
     execFile(
       bin,
-      ['-p', prompt, '--allowed-tools', 'Read,Glob'],
-      { cwd, timeout: TIMEOUT_MS, maxBuffer: MAX_OUTPUT },
+      [
+        '-p',
+        prompt,
+        '--tools',
+        'read_file,grep,list_dir',
+        '--no-subagents',
+        '--no-plan',
+        '--disable-web-search',
+        '--always-approve',
+        '--output-format',
+        'json',
+        '--verbatim',
+        '--cwd',
+        cwd,
+      ],
+      { cwd, timeout: TIMEOUT_MS, maxBuffer: MAX_OUTPUT, env },
       (err, stdout, stderr) => {
-        if (AUTH_FAILURE_PATTERN.test(stdout) || AUTH_FAILURE_PATTERN.test(stderr)) {
+        if (failedAuth(stdout, stderr)) {
           reject(new Error('the inbox brain is not logged in on the server'));
           return;
         }
@@ -86,7 +139,7 @@ function run(prompt: string, cwd: string): Promise<string> {
           );
           return;
         }
-        resolve(stdout);
+        resolve(extractText(stdout));
       },
     );
   });
@@ -98,10 +151,10 @@ function humanSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-// Extensions small and safe enough to hand the model via Read — text and
+// Extensions small and safe enough to hand the model via read_file — text and
 // images the CLI can already open. Everything else is described by name and
-// size alone: audio and video carry no textual content Read can use, and a
-// large binary risks the output buffer for no benefit.
+// size alone: audio and video carry no textual content read_file can use, and
+// a large binary risks the output buffer for no benefit.
 const READABLE_EXTENSIONS = new Set([
   '.txt',
   '.md',
@@ -141,9 +194,9 @@ function buildPrompt(
 
 The root of that filing system is ${root}, which is also your working
 directory. Read AGENTS.md there first -- it documents the layout and the
-rules for what goes where. Then look around with Glob as far as you need to.
-Do not file into a dotfolder (.git, .obsidian, .trash, and the like) even if
-it looks like a plausible destination.
+rules for what goes where. Then look around with list_dir and grep as far as
+you need to. Do not file into a dotfolder (.git, .obsidian, .trash, and the
+like) even if it looks like a plausible destination.
 
 The file:
   original name: ${filename}

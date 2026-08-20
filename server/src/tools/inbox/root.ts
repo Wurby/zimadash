@@ -5,7 +5,7 @@ import path from 'node:path';
  * The destination filesystem the brain files into, and every path decision
  * around it.
  *
- * No fallback list and no default — unlike resolveClaude()'s candidate paths
+ * No fallback list and no default — unlike resolveGrok()'s candidate paths
  * in brain.ts, guessing at a location on Joshua's filesystem is worse than
  * refusing to run.
  */

@@ -215,17 +215,17 @@ a deliberate design choice and is not to be described in any tracked file.
 
 ## The estimator
 
-The calorie tracker shells out to the Claude CLI installed on the box, so it
-runs on a subscription that already exists rather than a metered API key. That
-is the whole reason the tool exists instead of a paid app, and the cost is
+The calorie tracker shells out to Grok Build (`grok -p`) installed on the box,
+so it runs on a subscription that already exists rather than a metered API key.
+That is the whole reason the tool exists instead of a paid app, and the cost is
 several seconds per estimate — the UI is built around the wait, not against it.
 
 Two rules:
 
-- **The tool grant is `WebSearch`, plus `Read` only when there is a photograph.**
+- **The tool grant is `web_search`, plus `read_file` only when there is a photograph.**
   Search earns its place: a branded or restaurant item gets looked up instead of
   guessed at, and the model skips it for ordinary food, so a normal estimate
-  pays no latency for it. **`WebFetch` is deliberately excluded** — it would let
+  pays no latency for it. **`web_fetch` is deliberately excluded** — it would let
   a crafted description send this box to an arbitrary URL, which search results
   do not. This process handles input from the open internet; widening the grant
   further is not a small change.
@@ -241,8 +241,8 @@ is worse than a visible failure.
 
 ## The trainer
 
-The second tool to shell out to a model, and the rules differ from the
-estimator's in ways that matter.
+The second tool to shell out to a model — also via `grok -p` — and the rules
+differ from the estimator's in ways that matter.
 
 **The equipment generates everything.** Every achievable load is a subset sum
 over the plates and dumbbells in `trainer/settings.json`. **Never write a weight
@@ -332,21 +332,21 @@ preference: swapping voices means removing the old one, or pinning with
 
 ## The inbox
 
-The third tool to shell out to a model, and the first that writes outside
-`DATA_DIR`.
+The third tool to shell out to a model — also via `grok -p` — and the first
+that writes outside `DATA_DIR`.
 
 **Drop a file, the brain files it.** No fixed destination list — the model is
 pointed at `ZIMADASH_INBOX_ROOT` (no fallback, no default; guessing at a path
 on Joshua's filesystem is worse than refusing to run) and told to read
 `AGENTS.md` there first, the same way this file orients a coding agent in this
-repo. It explores with `Glob` from there, using the optional instructions text
-when Josh gave one.
+repo. It explores with `list_dir` and `grep` from there, using the optional
+instructions text when Josh gave one.
 
-**Grant: `Read,Glob`, nothing else.** Not `Write`/`Edit`/`Bash` — the model
-returns a decision (folder, filename, confidence, one sentence why), and the
-server performs the actual move. Same boundary as the trainer's weight
+**Grant: `read_file,grep,list_dir`, nothing else.** Not write, not shell — the
+model returns a decision (folder, filename, confidence, one sentence why), and
+the server performs the actual move. Same boundary as the trainer's weight
 snapping: the model chooses, code executes, and that boundary is what makes
-validating the chosen path worth doing. Not `WebSearch`/`WebFetch` — filing a
+validating the chosen path worth doing. Not `web_search`/`web_fetch` — filing a
 local file needs no network.
 
 **Staged in `DATA_DIR`, not `os.tmpdir()`.** This is a deliberate divergence

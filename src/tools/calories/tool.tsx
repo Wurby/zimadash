@@ -15,10 +15,10 @@ import { WeightBar } from './WeightBar'
 /**
  * Calories — what you ate, and what it cost.
  *
- * Estimates come from the Claude CLI on the box, so this runs on a subscription
- * that already exists rather than a metered API key. That is the whole reason
- * the tool exists instead of a paid app, and it costs several seconds per
- * estimate, which the input is built around.
+ * Estimates come from Grok Build (`grok -p`) on the box, so this runs on a
+ * subscription that already exists rather than a metered API key. That is the
+ * whole reason the tool exists instead of a paid app, and it costs several
+ * seconds per estimate, which the input is built around.
  */
 
 const TABS = ['Today', 'Weight', 'Reports', 'Log', 'Settings'] as const

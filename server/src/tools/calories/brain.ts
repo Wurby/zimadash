@@ -7,7 +7,7 @@ import type { FieldConfig, PendingEstimate } from '../../shared/calories.js';
 import { trackedFields } from './settings.js';
 
 /**
- * Estimating a meal by shelling out to the Claude CLI on the box.
+ * Estimating a meal by shelling out to Grok Build (`grok -p`) on the box.
  *
  * The CLI rather than the API on purpose: it runs on the subscription that is
  * already paid for, which is the entire reason this tool exists instead of a
@@ -21,12 +21,13 @@ const TIMEOUT_MS = 90_000;
 const MAX_OUTPUT = 1024 * 1024;
 
 /** systemd gives the unit a minimal PATH, so the CLI has to be found by hand. */
-function resolveClaude(): string | null {
+function resolveGrok(): string | null {
   const candidates = [
-    process.env.ZIMADASH_CLAUDE_BIN,
-    path.join(os.homedir(), '.local/bin/claude'),
-    '/usr/local/bin/claude',
-    '/opt/homebrew/bin/claude',
+    process.env.ZIMADASH_GROK_BIN,
+    path.join(os.homedir(), '.local/bin/grok'),
+    path.join(os.homedir(), '.grok/bin/grok'),
+    '/usr/local/bin/grok',
+    '/opt/homebrew/bin/grok',
   ].filter((candidate): candidate is string => Boolean(candidate));
 
   for (const candidate of candidates) {
@@ -40,44 +41,108 @@ function resolveClaude(): string | null {
   return null;
 }
 
+/** An empty cwd so Grok does not walk up into the deploy tree and ingest this
+ *  repo's AGENTS.md as project context for a meal estimate. */
+function scratchDir(): string {
+  const dir = path.join(os.tmpdir(), 'zimadash-estimator');
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
 // The CLI's own words when its session has lapsed — matched against stdout
 // *and* stderr because which stream it lands on isn't reliable, and it has
 // been seen to exit 0 even while saying this.
-const AUTH_FAILURE_PATTERN = /oauth session expired|failed to authenticate|not logged in/i;
+const AUTH_FAILURE_PATTERN =
+  /oauth session expired|failed to authenticate|not logged in|not signed in|authentication failed|unauthorized/i;
 
 function firstLine(text: string, max = 200): string {
   const line = text.split('\n').find((l) => l.trim().length > 0) ?? '';
   return line.trim().slice(0, max);
 }
 
+/** `grok -p --output-format json` wraps the model's reply in `{ text }`. */
+function extractText(stdout: string): string {
+  const trimmed = stdout.trim();
+  if (!trimmed.startsWith('{')) return stdout;
+  try {
+    const body = JSON.parse(trimmed) as { text?: unknown };
+    if (typeof body.text === 'string') return body.text;
+  } catch {
+    /* the model itself replied with JSON; parse() will pick it out */
+  }
+  return stdout;
+}
+
+function failedAuth(stdout: string, stderr: string): boolean {
+  if (AUTH_FAILURE_PATTERN.test(stdout) || AUTH_FAILURE_PATTERN.test(stderr)) return true;
+  try {
+    const body = JSON.parse(stdout.trim()) as { type?: unknown; message?: unknown };
+    return (
+      body.type === 'error' &&
+      typeof body.message === 'string' &&
+      AUTH_FAILURE_PATTERN.test(body.message)
+    );
+  } catch {
+    return false;
+  }
+}
+
 function run(prompt: string, withImage = false): Promise<string> {
-  const bin = resolveClaude();
+  const bin = resolveGrok();
   if (!bin) throw new Error('the estimator is not installed on this server');
 
   // Search is always available so a branded or restaurant item can be looked up
-  // rather than guessed at; Read is added only when there is a photograph to
-  // look at. Nothing else is ever allowed — in particular not WebFetch, which
-  // would let a crafted description send this box to an arbitrary URL.
-  const tools = withImage ? 'WebSearch,Read' : 'WebSearch';
-  const args = ['-p', prompt, '--allowed-tools', tools];
+  // rather than guessed at; read_file is added only when there is a photograph
+  // to look at. Nothing else is ever allowed — in particular not web_fetch,
+  // which would let a crafted description send this box to an arbitrary URL.
+  const tools = withImage ? 'web_search,read_file' : 'web_search';
+  const args = [
+    '-p',
+    prompt,
+    '--tools',
+    tools,
+    '--no-subagents',
+    '--no-plan',
+    '--always-approve',
+    '--output-format',
+    'json',
+    '--verbatim',
+    '--cwd',
+    scratchDir(),
+  ];
+
+  const env = {
+    ...process.env,
+    GROK_DISABLE_AUTOUPDATER: '1',
+    GROK_MEMORY: '0',
+  };
 
   return new Promise((resolve, reject) => {
-    execFile(bin, args, { timeout: TIMEOUT_MS, maxBuffer: MAX_OUTPUT }, (err, stdout, stderr) => {
-      if (AUTH_FAILURE_PATTERN.test(stdout) || AUTH_FAILURE_PATTERN.test(stderr)) {
-        reject(new Error('the estimator is not logged in on the server'));
-        return;
-      }
-      if (err) {
-        if (err.killed) {
-          reject(new Error('the estimator timed out'));
+    execFile(
+      bin,
+      args,
+      { timeout: TIMEOUT_MS, maxBuffer: MAX_OUTPUT, env },
+      (err, stdout, stderr) => {
+        if (failedAuth(stdout, stderr)) {
+          reject(new Error('the estimator is not logged in on the server'));
           return;
         }
-        const detail = firstLine(stderr) || firstLine(stdout);
-        reject(new Error(detail ? `the estimator failed to run: ${detail}` : 'the estimator failed to run'));
-        return;
-      }
-      resolve(stdout);
-    });
+        if (err) {
+          if (err.killed) {
+            reject(new Error('the estimator timed out'));
+            return;
+          }
+          const detail = firstLine(stderr) || firstLine(stdout);
+          reject(
+            new Error(
+              detail ? `the estimator failed to run: ${detail}` : 'the estimator failed to run',
+            ),
+          );
+          return;
+        }
+        resolve(extractText(stdout));
+      },
+    );
   });
 }
 
@@ -239,7 +304,8 @@ export async function startEstimate(description: string): Promise<PendingEstimat
  * enough for the refinement rounds to work on afterwards without the picture.
  */
 export async function startImageEstimate(base64: string): Promise<PendingEstimate> {
-  const file = path.join(os.tmpdir(), `zimadash-meal-${crypto.randomBytes(8).toString('hex')}.jpg`);
+  // Inside the scratch cwd so Grok's read_file grant can actually open it.
+  const file = path.join(scratchDir(), `meal-${crypto.randomBytes(8).toString('hex')}.jpg`);
   fs.writeFileSync(file, Buffer.from(base64, 'base64'), { mode: 0o600 });
 
   try {
