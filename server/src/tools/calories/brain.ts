@@ -87,13 +87,17 @@ function failedAuth(stdout: string, stderr: string): boolean {
   }
 }
 
-export function complete(prompt: string, tools: string, timeoutMs = TIMEOUT_MS): Promise<string> {
+export function complete(
+  prompt: string,
+  tools: string,
+  timeoutMs = TIMEOUT_MS,
+  promptFile?: string,
+): Promise<string> {
   const bin = resolveGrok();
   if (!bin) throw new Error('the estimator is not installed on this server');
 
-  const args = [
-    '-p',
-    prompt,
+  const args = promptFile ? ['--prompt-file', promptFile] : ['-p', prompt];
+  args.push(
     '--tools',
     tools,
     '--no-subagents',
@@ -104,8 +108,9 @@ export function complete(prompt: string, tools: string, timeoutMs = TIMEOUT_MS):
     '--verbatim',
     '--cwd',
     scratchDir(),
-  ];
+  );
   if (!tools) args.push('--disable-web-search');
+  if (promptFile) args.push('--max-turns', '6');
 
   const env = {
     ...process.env,
@@ -142,12 +147,12 @@ export function complete(prompt: string, tools: string, timeoutMs = TIMEOUT_MS):
   });
 }
 
-function run(prompt: string, withImage = false): Promise<string> {
+function run(prompt: string, promptFile?: string): Promise<string> {
   // Search is always available so a branded or restaurant item can be looked up
-  // rather than guessed at; read_file is added only when there is a photograph
-  // to look at. Nothing else is ever allowed — in particular not web_fetch,
-  // which would let a crafted description send this box to an arbitrary URL.
-  return complete(prompt, withImage ? 'web_search,read_file' : 'web_search');
+  // rather than guessed at. A photograph is attached in the prompt itself, so
+  // read_file is not granted — that extra tool round is what blew the tunnel
+  // budget. web_fetch stays excluded.
+  return complete(prompt, 'web_search', TIMEOUT_MS, promptFile);
 }
 
 function describeFields(fields: FieldConfig[]): string {
@@ -156,15 +161,15 @@ function describeFields(fields: FieldConfig[]): string {
     .join('\n');
 }
 
-function buildPrompt(fields: FieldConfig[], transcript: string[], imagePath?: string): string {
+function buildPrompt(fields: FieldConfig[], transcript: string[], withImage = false): string {
   const now = new Date();
   const clock = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const day = now.toLocaleDateString([], { weekday: 'long' });
 
-  const image = imagePath
-    ? `Read the image at ${imagePath}. It is a photograph of the meal. Judge the
-portion from what is on the plate and from anything in shot that gives scale —
-cutlery, a hand, the size of the plate itself.
+  const image = withImage
+    ? `The attached image is a photograph of the meal. Judge the portion from
+what is on the plate and from anything in shot that gives scale — cutlery, a
+hand, the size of the plate itself.
 
 `
     : '';
@@ -241,21 +246,23 @@ function serialise<T>(work: () => Promise<T>): Promise<T> {
   return next;
 }
 
-async function estimate(transcript: string[], imagePath?: string): Promise<Parsed> {
+async function estimate(transcript: string[], promptFile?: string): Promise<Parsed> {
   const fields = trackedFields();
-  const prompt = buildPrompt(fields, transcript, imagePath);
-  const withImage = imagePath !== undefined;
+  const prompt = buildPrompt(fields, transcript, promptFile !== undefined);
 
   return serialise(async () => {
     // A run() failure — auth, a missing binary, a timeout — is the same
     // problem every time, so it isn't retried; it would just cost another 90
     // seconds to fail the same way twice. Only a bad reply from a successful
-    // run is retried, since that's usually a one-off.
-    const output = await run(prompt, withImage);
+    // run is retried, since that's usually a one-off. A photograph already
+    // spends most of the tunnel's ~100s budget, so a parse miss is not retried
+    // either — a second 90s would be cut off as a tunnel error instead.
+    const output = await run(prompt, promptFile);
     try {
       return parse(output, fields);
     } catch {
-      return parse(await run(prompt, withImage), fields);
+      if (promptFile) throw new Error("the estimator's reply could not be read");
+      return parse(await run(prompt), fields);
     }
   });
 }
@@ -308,9 +315,17 @@ export async function startEstimate(description: string): Promise<PendingEstimat
  * enough for the refinement rounds to work on afterwards without the picture.
  */
 export async function startImageEstimate(base64: string): Promise<PendingEstimate> {
-  // Inside the scratch cwd so Grok's read_file grant can actually open it.
-  const file = path.join(scratchDir(), `meal-${crypto.randomBytes(8).toString('hex')}.jpg`);
-  fs.writeFileSync(file, Buffer.from(base64, 'base64'), { mode: 0o600 });
+  const fields = trackedFields();
+  const prompt = buildPrompt(fields, ['Meal: the photograph.'], true);
+  const file = path.join(scratchDir(), `meal-${crypto.randomBytes(8).toString('hex')}.json`);
+  fs.writeFileSync(
+    file,
+    JSON.stringify([
+      { type: 'text', text: prompt },
+      { type: 'image', mimeType: 'image/jpeg', data: base64 },
+    ]),
+    { mode: 0o600 },
+  );
 
   try {
     const parsed = await estimate(['Meal: the photograph.'], file);

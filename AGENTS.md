@@ -222,17 +222,19 @@ several seconds per estimate — the UI is built around the wait, not against it
 
 Two rules:
 
-- **The tool grant is `web_search`, plus `read_file` only when there is a photograph.**
-  Search earns its place: a branded or restaurant item gets looked up instead of
-  guessed at, and the model skips it for ordinary food, so a normal estimate
-  pays no latency for it. **`web_fetch` is deliberately excluded** — it would let
-  a crafted description send this box to an arbitrary URL, which search results
+- **The tool grant is `web_search` only.** Search earns its place: a branded or
+  restaurant item gets looked up instead of guessed at, and the model skips it
+  for ordinary food, so a normal estimate pays no latency for it. A photograph
+  is attached as an image block in the prompt (`grok --prompt-file`), not
+  opened with `read_file` — that extra tool round blew the ~100s Cloudflare
+  tunnel budget. **`web_fetch` is deliberately excluded** — it would let a
+  crafted description send this box to an arbitrary URL, which search results
   do not. This process handles input from the open internet; widening the grant
   further is not a small change.
-- **A photograph never lands in `DATA_DIR`.** It goes to the OS temp directory,
-  is read once, and is deleted in a `finally`. What survives is the model's own
-  name for the meal and its numbers, which is enough to refine by text
-  afterwards.
+- **A photograph never lands in `DATA_DIR`.** It is written to a temp JSON
+  prompt (image bytes included), read once, and deleted in a `finally`. What
+  survives is the model's own name for the meal and its numbers, which is
+  enough to refine by text afterwards.
 
 Replies are validated strictly — every configured field must come back as a
 plain number — with one retry, then an error. There is deliberately no fallback
