@@ -114,6 +114,8 @@ export interface ReviewState {
   entries: Entry[]
   totals: Record<string, number>
   pendingTotals: Record<string, number>
+  adjusting: boolean
+  adjustError: string | null
 }
 
 export const getReview = () => api<ReviewState>(`${BASE}/review`)

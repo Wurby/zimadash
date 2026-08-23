@@ -227,7 +227,8 @@ export function MainTab({ settings }: { settings: Settings | null }) {
 
   const [text, setText] = useState('')
   const [adjust, setAdjust] = useState('')
-  const [busy, setBusy] = useState(false)
+  const [capturing, setCapturing] = useState(false)
+  const [approving, setApproving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const input = useRef<HTMLInputElement>(null)
   const photoInput = useRef<HTMLInputElement>(null)
@@ -241,9 +242,9 @@ export function MainTab({ settings }: { settings: Settings | null }) {
   async function submit(event: React.FormEvent) {
     event.preventDefault()
     const value = text.trim()
-    if (!value || busy) return
+    if (!value || capturing) return
     setError(null)
-    setBusy(true)
+    setCapturing(true)
     try {
       if (isBareNumber(value)) {
         await queueDirect('', { calories: Number(value) })
@@ -255,40 +256,39 @@ export function MainTab({ settings }: { settings: Settings | null }) {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'that did not work')
     } finally {
-      setBusy(false)
+      setCapturing(false)
       input.current?.focus()
     }
   }
 
   async function fromPhoto(file: File) {
-    if (busy) return
+    if (capturing) return
     setError(null)
-    setBusy(true)
+    setCapturing(true)
     try {
       await queuePhoto(await shrink(file))
       refreshAll()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'could not queue that photo')
     } finally {
-      setBusy(false)
+      setCapturing(false)
     }
   }
 
   async function relog(description: string, values: Record<string, number>) {
-    setBusy(true)
+    setCapturing(true)
     try {
       await queueDirect(description, values)
       refreshAll()
     } finally {
-      setBusy(false)
+      setCapturing(false)
     }
   }
 
   async function sendAdjust() {
     if (!review.status || review.status !== 'ok') return
     const said = adjust.trim()
-    if (!said || busy) return
-    setBusy(true)
+    if (!said) return
     setError(null)
     try {
       await adjustQueued(review.data.day, said)
@@ -296,14 +296,12 @@ export function MainTab({ settings }: { settings: Settings | null }) {
       refreshAll()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'could not adjust')
-    } finally {
-      setBusy(false)
     }
   }
 
   async function approve() {
     if (review.status !== 'ok') return
-    setBusy(true)
+    setApproving(true)
     setError(null)
     try {
       await approveDay(review.data.day)
@@ -311,7 +309,7 @@ export function MainTab({ settings }: { settings: Settings | null }) {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'could not approve')
     } finally {
-      setBusy(false)
+      setApproving(false)
     }
   }
 
@@ -319,7 +317,12 @@ export function MainTab({ settings }: { settings: Settings | null }) {
   const data = review.status === 'ok' ? review.data : null
   const suspended = Boolean(data?.suspended)
   const items = data?.items ?? []
-  const canApprove = items.length > 0 && items.every((item) => item.status === 'ready')
+  const draftingAdjust = adjust.trim().length > 0
+  const canApprove =
+    items.length > 0 &&
+    items.every((item) => item.status === 'ready') &&
+    !data?.adjusting &&
+    !draftingAdjust
 
   return (
     <div className="space-y-5">
@@ -339,51 +342,49 @@ export function MainTab({ settings }: { settings: Settings | null }) {
 
       {suspended && data && (
         <p className="text-accent text-sm">
-          Review {headingFor(data.day, data.today)} before logging anything new. Weight is still
-          available.
+          Review {headingFor(data.day, data.today)} first. You can still add meals to that day.
+          Weight is available.
         </p>
       )}
 
-      {!suspended && (
-        <form onSubmit={submit}>
-          <div className="relative">
-            <input
-              ref={input}
-              value={text}
-              onChange={(event) => setText(event.target.value)}
-              disabled={busy}
-              autoFocus
-              enterKeyHint="done"
-              placeholder="A number, or what you ate…"
-              className="border-line bg-surface focus:border-accent w-full border py-3.5 pr-14 pl-4 text-base outline-none disabled:opacity-50"
-            />
-            <input
-              ref={photoInput}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              hidden
-              onChange={(event) => {
-                const file = event.target.files?.[0]
-                event.target.value = ''
-                if (file) void fromPhoto(file)
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => photoInput.current?.click()}
-              disabled={busy}
-              aria-label="Photograph the meal instead"
-              className="text-ink-dim hover:text-accent absolute inset-y-0 right-0 grid w-14 place-items-center disabled:opacity-50"
-            >
-              <Icon name="camera" className="!h-6 !w-6" />
-            </button>
-          </div>
-          {busy && (
-            <p className="text-ink-dim mt-2 font-mono text-xs">queued — you can lock the phone</p>
-          )}
-        </form>
-      )}
+      <form onSubmit={submit}>
+        <div className="relative">
+          <input
+            ref={input}
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            disabled={capturing}
+            autoFocus
+            enterKeyHint="done"
+            placeholder="A number, or what you ate…"
+            className="border-line bg-surface focus:border-accent w-full border py-3.5 pr-14 pl-4 text-base outline-none disabled:opacity-50"
+          />
+          <input
+            ref={photoInput}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            hidden
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              event.target.value = ''
+              if (file) void fromPhoto(file)
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => photoInput.current?.click()}
+            disabled={capturing}
+            aria-label="Photograph the meal instead"
+            className="text-ink-dim hover:text-accent absolute inset-y-0 right-0 grid w-14 place-items-center disabled:opacity-50"
+          >
+            <Icon name="camera" className="!h-6 !w-6" />
+          </button>
+        </div>
+        {capturing && (
+          <p className="text-ink-dim mt-2 font-mono text-xs">queued — you can lock the phone</p>
+        )}
+      </form>
 
       {error && (
         <p role="alert" className="text-danger text-sm">
@@ -405,7 +406,7 @@ export function MainTab({ settings }: { settings: Settings | null }) {
                 key={item.id}
                 item={item}
                 fields={fields}
-                busy={busy}
+                busy={approving}
                 onChanged={refreshAll}
               />
             ))}
@@ -416,17 +417,25 @@ export function MainTab({ settings }: { settings: Settings | null }) {
               value={adjust}
               onChange={(event) => setAdjust(event.target.value)}
               onKeyDown={(event) => event.key === 'Enter' && void sendAdjust()}
-              disabled={busy || items.every((item) => item.status !== 'ready')}
+              disabled={items.every((item) => item.status !== 'ready')}
               placeholder="Adjust the day in one sentence…"
               className="border-line focus:border-accent w-full border bg-transparent px-3 py-2 text-sm outline-none disabled:opacity-50"
             />
+            {data.adjusting && (
+              <p className="text-ink-dim font-mono text-xs">applying the adjustment…</p>
+            )}
+            {data.adjustError && <p className="text-danger text-xs">{data.adjustError}</p>}
             <button
               type="button"
               onClick={approve}
-              disabled={busy || !canApprove}
+              disabled={approving || !canApprove}
               className="bg-accent min-h-11 w-full px-4 text-sm font-medium text-slate-50 disabled:opacity-50 dark:text-slate-900"
             >
-              {canApprove ? 'Approve the day' : 'Waiting for every item to have numbers'}
+              {draftingAdjust
+                ? 'Send your change first'
+                : canApprove
+                  ? 'Approve the day'
+                  : 'Waiting for every item to have numbers'}
             </button>
           </div>
         </div>
@@ -457,7 +466,7 @@ export function MainTab({ settings }: { settings: Settings | null }) {
             />
           ))}
 
-      {!suspended && recent.status === 'ok' && recent.data.length > 0 && (
+      {recent.status === 'ok' && recent.data.length > 0 && (
         <div>
           <p className="text-ink-dim text-[0.65rem] font-medium tracking-wide uppercase">Again</p>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -466,7 +475,7 @@ export function MainTab({ settings }: { settings: Settings | null }) {
                 key={meal.description}
                 type="button"
                 onClick={() => relog(meal.description, meal.values)}
-                disabled={busy}
+                disabled={capturing}
                 className="border-line hover:border-accent bg-surface flex min-h-11 items-center gap-2 border px-3 text-sm disabled:opacity-50"
               >
                 {meal.description}

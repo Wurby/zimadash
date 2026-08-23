@@ -221,7 +221,9 @@ Capture is fire-and-forget: the phone queues the meal (photo, text, a number,
 or an Again chip) and can lock as soon as the server has the bytes. The brain
 runs in the background. Today is the review — pending numbers sit on the bar,
 visually distinct, and do not become log entries until you **Approve the day**.
-One adjustment box lets Grok rewrite whichever meal the sentence refers to.
+One adjustment box lets Grok rewrite whichever meal the sentence refers to;
+that runs in the background too, so you can still queue more meals while it
+processes.
 
 If the clock rolls over with a pile still open, Today _is_ that unreviewed day
 until you Approve. Logging, Reports, Log and Settings are off; Weight stays on.

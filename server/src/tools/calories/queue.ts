@@ -79,15 +79,45 @@ export function loggingSuspended(today: string): boolean {
   return oldest !== null && oldest < today;
 }
 
+let adjustJobs = 0;
+let lastAdjustError: string | null = null;
+
+export function isAdjusting(): boolean {
+  return adjustJobs > 0;
+}
+
+export function adjustError(): string | null {
+  return lastAdjustError;
+}
+
+/** Fire-and-forget. New captures can join the pile while this runs. */
+export function queueAdjust(day: string, feedback: string): { error?: string } {
+  const ready = itemsForDay(day).filter((item) => item.status === 'ready');
+  if (ready.length === 0) return { error: 'nothing to adjust yet' };
+  lastAdjustError = null;
+  adjustJobs += 1;
+  void adjustDay(day, feedback)
+    .then((result) => {
+      if (result.error) lastAdjustError = result.error;
+    })
+    .finally(() => {
+      adjustJobs -= 1;
+    });
+  return {};
+}
+
 function enqueue(
   source: QueueSource,
   description: string,
   values: Record<string, number>,
   status: QueuedMeal['status'],
 ): QueuedMeal {
+  const today = dayKeyFor(Date.now());
   const item: QueuedMeal = {
     id: randomUUID(),
-    day: dayKeyFor(Date.now()),
+    // Land on the day under review, not always calendar today — so a photo
+    // taken while yesterday is still open joins yesterday's pile.
+    day: reviewDay(today),
     at: Date.now(),
     source,
     status,
@@ -157,6 +187,7 @@ export function fillItem(id: string, description?: string, base64?: string): Que
 }
 
 export function approveDay(day: string): { ok: true } | { error: string } {
+  if (adjustJobs > 0) return { error: 'an adjustment is still running' };
   const dayItems = itemsForDay(day);
   if (dayItems.length === 0) return { error: 'nothing to approve' };
   if (dayItems.some((item) => item.status !== 'ready')) {

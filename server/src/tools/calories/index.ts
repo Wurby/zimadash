@@ -36,13 +36,15 @@ import {
 } from './storage.js';
 import { cachedChips, startClusterLoop } from './clusters.js';
 import {
-  adjustDay,
+  adjustError,
   approveDay,
   dropItem,
   fillItem,
+  isAdjusting,
   itemsForDay,
   loggingSuspended,
   pendingTotalsFor,
+  queueAdjust,
   queueDirect,
   queuePhoto,
   queueText,
@@ -145,6 +147,8 @@ router.get('/review', (_req, res) => {
     entries,
     totals: totalsFor(entries),
     pendingTotals: pendingTotalsFor(day),
+    adjusting: isAdjusting(),
+    adjustError: adjustError(),
   });
 });
 
@@ -159,10 +163,6 @@ router.post('/queue/photo', (req, res) => {
     res.status(413).json({ error: 'that photo is too large' });
     return;
   }
-  if (loggingSuspended(dayKeyFor(Date.now()))) {
-    res.status(409).json({ error: 'review the previous day before logging' });
-    return;
-  }
   res.status(202).json(queuePhoto(base64));
 });
 
@@ -170,10 +170,6 @@ router.post('/queue/text', (req, res) => {
   const description = typeof req.body?.description === 'string' ? req.body.description.trim() : '';
   if (!description) {
     res.status(400).json({ error: 'describe what you ate' });
-    return;
-  }
-  if (loggingSuspended(dayKeyFor(Date.now()))) {
-    res.status(409).json({ error: 'review the previous day before logging' });
     return;
   }
   res.status(202).json(queueText(description));
@@ -195,10 +191,6 @@ router.post('/queue/direct', (req, res) => {
   }
   if (Object.keys(clean).length === 0) {
     res.status(400).json({ error: 'nothing to log' });
-    return;
-  }
-  if (loggingSuspended(dayKeyFor(Date.now()))) {
-    res.status(409).json({ error: 'review the previous day before logging' });
     return;
   }
   res.status(202).json(queueDirect(description, clean));
@@ -224,7 +216,7 @@ router.post('/queue/:id/fill', (req, res) => {
   res.status(202).json(item);
 });
 
-router.post('/queue/adjust', async (req, res) => {
+router.post('/queue/adjust', (req, res) => {
   const feedback = typeof req.body?.feedback === 'string' ? req.body.feedback.trim() : '';
   if (!feedback) {
     res.status(400).json({ error: 'say what to change' });
@@ -232,12 +224,12 @@ router.post('/queue/adjust', async (req, res) => {
   }
   const today = dayKeyFor(Date.now());
   const day = typeof req.body?.day === 'string' ? req.body.day : reviewDay(today);
-  const result = await adjustDay(day, feedback);
+  const result = queueAdjust(day, feedback);
   if (result.error) {
-    res.status(503).json({ error: result.error });
+    res.status(409).json({ error: result.error });
     return;
   }
-  res.json({ ok: true, items: itemsForDay(day) });
+  res.status(202).json({ ok: true });
 });
 
 router.post('/queue/approve', (req, res) => {
