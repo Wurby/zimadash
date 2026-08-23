@@ -24,6 +24,7 @@ const app = express();
 // instead would hand every endpoint the same allowance, which is a needless
 // amount of memory to let a stranger allocate.
 app.use('/api/tools/calories/estimate/image', express.json({ limit: '12mb' }));
+app.use('/api/tools/calories/queue', express.json({ limit: '12mb' }));
 // /api/tools/inbox/upload deliberately gets no parser at all: it reads req as
 // a raw byte stream itself (see inbox/index.ts) and pins its own Content-Type
 // to application/octet-stream, which express.json() below ignores and passes

@@ -14,7 +14,7 @@ import { usePolled } from '../../lib/refresh'
 import {
   deleteEntry,
   getLogView,
-  logDirect,
+  queueDirect,
   patchEntry,
   reestimateEntry,
   searchLog,
@@ -180,7 +180,7 @@ function Row({
   async function addToday() {
     setBusy(true)
     try {
-      await logDirect(entry.description, entry.values)
+      await queueDirect(entry.description, entry.values)
       setAdding(false)
       onChanged()
     } finally {
@@ -553,7 +553,7 @@ function LogPane({
   async function add(meal: RecentMeal) {
     setBusy(true)
     try {
-      await logDirect(meal.description, meal.values)
+      await queueDirect(meal.description, meal.values)
       view.refresh()
     } finally {
       setBusy(false)

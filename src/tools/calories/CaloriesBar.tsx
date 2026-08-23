@@ -15,30 +15,49 @@ export function CaloriesBar({
   totals,
   fields,
   compact = false,
+  pendingTotals,
+  review = false,
 }: {
   totals: Record<string, number>
   fields: FieldConfig[]
   /** Tile version: no percentage legend, tighter type. The coloured bar still
    *  carries the breakdown — the numbers are detail for the tool page. */
   compact?: boolean
+  /** Ready but unapproved queue items. Shown as a dim add-on, not mixed in. */
+  pendingTotals?: Record<string, number>
+  /** Tile flag: a past day still needs review. */
+  review?: boolean
 }) {
   const calories = Math.round(totals.calories ?? 0)
+  const pending = Math.round(pendingTotals?.calories ?? 0)
+  const combined = calories + pending
   const goal = fields.find((field) => field.id === 'calories')?.goal ?? null
 
   const colors = Object.fromEntries(fields.map((field) => [field.id, field.color]))
   const { segments, accounted } = composition(totals, colors)
 
-  const fill = goal ? Math.min(100, (calories / goal) * 100) : 100
-  const over = goal !== null && calories > goal
+  const fillBase = goal ?? (combined > 0 ? combined : 1)
+  const fill = Math.min(100, (calories / fillBase) * 100)
+  const pendingFill = Math.min(100 - fill, (pending / fillBase) * 100)
+  const over = goal !== null && combined > goal
 
   return (
     <section>
       <div className="flex items-baseline justify-between gap-2">
-        <h2 className="text-ink-dim text-[0.6rem] font-medium tracking-wide uppercase">Calories</h2>
+        <h2 className="text-ink-dim text-[0.6rem] font-medium tracking-wide uppercase">
+          Calories
+          {review ? <span className="text-accent ml-2 normal-case">review</span> : null}
+        </h2>
         <p className="font-mono tabular-nums">
           <span className={`${compact ? 'text-lg' : 'text-2xl'} ${over ? 'text-danger' : ''}`}>
             {calories}
           </span>
+          {pending > 0 ? (
+            <span className={`text-ink-dim ${compact ? 'text-[0.65rem]' : 'text-sm'}`}>
+              {' '}
+              + {pending}
+            </span>
+          ) : null}
           {goal ? (
             <span className={`text-ink-dim ${compact ? 'text-[0.65rem]' : 'text-sm'}`}>
               {' '}
@@ -54,7 +73,7 @@ export function CaloriesBar({
         aria-label={
           segments.length
             ? `${calories} calories: ${segments.map((s) => `${s.label} ${Math.round(s.kcal)}`).join(', ')}`
-            : `${calories} calories`
+            : `${calories} calories${pending ? ` plus ${pending} pending` : ''}`
         }
       >
         {accounted > 0 ? (
@@ -69,6 +88,9 @@ export function CaloriesBar({
         ) : (
           // Only a bare number was logged — there is nothing to break down.
           <div className="bg-ink-dim" style={{ width: `${fill}%` }} />
+        )}
+        {pendingFill > 0 && (
+          <div className="bg-ink-dim opacity-40" style={{ width: `${pendingFill}%` }} />
         )}
       </div>
 

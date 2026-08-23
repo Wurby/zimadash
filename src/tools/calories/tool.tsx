@@ -15,10 +15,8 @@ import { WeightBar } from './WeightBar'
 /**
  * Calories — what you ate, and what it cost.
  *
- * Estimates come from Grok Build (`grok -p`) on the box, so this runs on a
- * subscription that already exists rather than a metered API key. That is the
- * whole reason the tool exists instead of a paid app, and it costs several
- * seconds per estimate, which the input is built around.
+ * Estimates come from Grok Build (`grok -p`) on the box. Capture queues on the
+ * server so the phone can lock; Today is the review.
  */
 
 const TABS = ['Today', 'Weight', 'Reports', 'Log', 'Settings'] as const
@@ -26,7 +24,7 @@ type Tab = (typeof TABS)[number]
 
 function Tile() {
   const settings = usePolled('event-driven', getSettings)
-  const day = usePolled('event-driven', getDay)
+  const day = usePolled('ambient', getDay)
   const weight = usePolled('event-driven', getWeight)
 
   if (day.status === 'loading' || settings.status === 'loading') {
@@ -45,7 +43,13 @@ function Tile() {
 
   return (
     <div className="flex h-full flex-col">
-      <CaloriesBar totals={day.data.totals} fields={fields} compact />
+      <CaloriesBar
+        totals={day.data.totals}
+        fields={fields}
+        compact
+        pendingTotals={day.data.pendingTotals}
+        review={Boolean(day.data.unreviewedDay)}
+      />
 
       {rest.length > 0 && (
         <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-0.5">
@@ -97,35 +101,44 @@ function Tile() {
 function View() {
   const [tab, setTab] = useState<Tab>('Today')
   const loaded = usePolled('event-driven', getSettings)
+  const day = usePolled('ambient', getDay)
   const [override, setOverride] = useState<Settings | null>(null)
   const settings = override ?? (loaded.status === 'ok' ? loaded.data : null)
+  const locked = day.status === 'ok' && Boolean(day.data.unreviewedDay)
+  const shown: Tab = locked && tab !== 'Weight' ? 'Today' : tab
 
   return (
     <div>
       <nav className="border-line flex gap-1 border-b" aria-label="Calories sections">
-        {TABS.map((name) => (
-          <button
-            key={name}
-            type="button"
-            onClick={() => setTab(name)}
-            aria-current={tab === name ? 'page' : undefined}
-            className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
-              tab === name
-                ? 'border-accent text-accent'
-                : 'hover:text-ink border-transparent text-ink-dim'
-            }`}
-          >
-            {name}
-          </button>
-        ))}
+        {TABS.map((name) => {
+          const blocked = locked && name !== 'Today' && name !== 'Weight'
+          return (
+            <button
+              key={name}
+              type="button"
+              onClick={() => !blocked && setTab(name)}
+              disabled={blocked}
+              aria-current={shown === name ? 'page' : undefined}
+              className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+                shown === name
+                  ? 'border-accent text-accent'
+                  : blocked
+                    ? 'border-transparent text-ink-dim opacity-40'
+                    : 'hover:text-ink border-transparent text-ink-dim'
+              }`}
+            >
+              {name}
+            </button>
+          )
+        })}
       </nav>
 
       <div className="mt-6">
-        {tab === 'Today' && <MainTab settings={settings} />}
-        {tab === 'Weight' && <WeightTab settings={settings} onSaved={setOverride} />}
-        {tab === 'Reports' && <ReportsTab settings={settings} />}
-        {tab === 'Log' && <LogTab settings={settings} />}
-        {tab === 'Settings' && <SettingsTab settings={settings} onSaved={setOverride} />}
+        {shown === 'Today' && <MainTab settings={settings} />}
+        {shown === 'Weight' && <WeightTab settings={settings} onSaved={setOverride} />}
+        {shown === 'Reports' && <ReportsTab settings={settings} />}
+        {shown === 'Log' && <LogTab settings={settings} />}
+        {shown === 'Settings' && <SettingsTab settings={settings} onSaved={setOverride} />}
       </div>
     </div>
   )

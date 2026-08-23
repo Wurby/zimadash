@@ -147,14 +147,6 @@ export function complete(
   });
 }
 
-function run(prompt: string, promptFile?: string): Promise<string> {
-  // Search is always available so a branded or restaurant item can be looked up
-  // rather than guessed at. A photograph is attached in the prompt itself, so
-  // read_file is not granted — that extra tool round is what blew the tunnel
-  // budget. web_fetch stays excluded.
-  return complete(prompt, 'web_search', TIMEOUT_MS, promptFile);
-}
-
 function describeFields(fields: FieldConfig[]): string {
   return fields
     .map((field) => `  "${field.id}" — ${field.label}${field.unit ? ` in ${field.unit}` : ''}`)
@@ -204,7 +196,7 @@ Fields:
 ${describeFields(fields)}`;
 }
 
-interface Parsed {
+export interface Parsed {
   name: string;
   values: Record<string, number>;
   assumptions: string;
@@ -240,31 +232,59 @@ function parse(reply: string, fields: FieldConfig[]): Parsed {
  */
 let queue: Promise<unknown> = Promise.resolve();
 
-function serialise<T>(work: () => Promise<T>): Promise<T> {
+export function serialise<T>(work: () => Promise<T>): Promise<T> {
   const next = queue.then(work, work);
   queue = next.catch(() => undefined);
   return next;
 }
 
-async function estimate(transcript: string[], promptFile?: string): Promise<Parsed> {
+function run(prompt: string, promptFile?: string, timeoutMs = TIMEOUT_MS): Promise<string> {
+  // Search is always available so a branded or restaurant item can be looked up
+  // rather than guessed at. A photograph is attached in the prompt itself, so
+  // read_file is not granted. web_fetch stays excluded.
+  return complete(prompt, 'web_search', timeoutMs, promptFile);
+}
+
+/**
+ * Run an estimate off the HTTP request. The queue uses a long watchdog
+ * (Grok's own 30-minute answer timeout); the old synchronous endpoints keep
+ * the short tunnel budget.
+ */
+export async function estimateMeal(
+  transcript: string[],
+  promptFile?: string,
+  timeoutMs = TIMEOUT_MS,
+): Promise<Parsed> {
   const fields = trackedFields();
   const prompt = buildPrompt(fields, transcript, promptFile !== undefined);
 
   return serialise(async () => {
-    // A run() failure — auth, a missing binary, a timeout — is the same
-    // problem every time, so it isn't retried; it would just cost another 90
-    // seconds to fail the same way twice. Only a bad reply from a successful
-    // run is retried, since that's usually a one-off. A photograph already
-    // spends most of the tunnel's ~100s budget, so a parse miss is not retried
-    // either — a second 90s would be cut off as a tunnel error instead.
-    const output = await run(prompt, promptFile);
+    const output = await run(prompt, promptFile, timeoutMs);
     try {
       return parse(output, fields);
     } catch {
-      if (promptFile) throw new Error("the estimator's reply could not be read");
-      return parse(await run(prompt), fields);
+      return parse(await run(prompt, promptFile, timeoutMs), fields);
     }
   });
+}
+
+async function estimate(transcript: string[], promptFile?: string): Promise<Parsed> {
+  return estimateMeal(transcript, promptFile, TIMEOUT_MS);
+}
+
+/** Write a grok --prompt-file job that includes the photograph as an image block. */
+export function writePhotoJob(base64: string, dest: string, transcript: string[]): void {
+  const fields = trackedFields();
+  const prompt = buildPrompt(fields, transcript, true);
+  fs.mkdirSync(path.dirname(dest), { recursive: true, mode: 0o700 });
+  fs.writeFileSync(
+    dest,
+    JSON.stringify([
+      { type: 'text', text: prompt },
+      { type: 'image', mimeType: 'image/jpeg', data: base64 },
+    ]),
+    { mode: 0o600 },
+  );
 }
 
 // ─── Pending threads ─────────────────────────────────────────────────────────

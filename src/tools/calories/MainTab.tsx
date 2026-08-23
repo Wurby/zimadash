@@ -1,19 +1,20 @@
 import { useRef, useState } from 'react'
-import type { FieldConfig, PendingEstimate, Settings } from '@shared/calories'
+import type { FieldConfig, QueuedMeal, Settings } from '@shared/calories'
 import { Icon } from '../../components/Icon'
 import { usePolled } from '../../lib/refresh'
-import { derivedCalories } from './macros'
 import { shrink } from './photo'
 import {
-  commitEstimate,
-  estimateFromPhoto,
-  getDay,
+  adjustQueued,
+  approveDay,
+  dropQueued,
+  fillQueued,
   getRange,
   getRecent,
+  getReview,
   getWeight,
-  logDirect,
-  refineEstimate,
-  startEstimate,
+  queueDirect,
+  queuePhoto,
+  queueText,
   tracked,
   withEffectiveGoal,
 } from './api'
@@ -23,21 +24,13 @@ import { Chart, type Point } from './Chart'
 import { buildPoints } from './points'
 
 /**
- * The tab you land on. Type, estimate, approve, done.
- *
- * A whole-string number is calories and logs immediately — that path never
- * touches the brain, so the fast case stays fast. Anything else is a
- * description and goes for an estimate, which takes several seconds, so the
- * input has to stay visibly alive rather than looking hung.
+ * Capture is fire-and-forget. The brain runs on the server; this tab only
+ * shows the queue. Approve the day (or adjust it) before the next day starts,
+ * or logging locks until you do.
  */
 
 const isBareNumber = (text: string): boolean => /^\d+(\.\d+)?$/.test(text.trim())
 
-/**
- * Everything except calories, which has its own bar above. Deliberately tight —
- * these were cards with the number floating in two-thirds empty space, and a
- * row of small facts reads faster than a grid of mostly-nothing.
- */
 function Totals({ totals, fields }: { totals: Record<string, number>; fields: FieldConfig[] }) {
   return (
     <div className="border-line divide-line bg-surface divide-y border">
@@ -79,145 +72,168 @@ function Totals({ totals, fields }: { totals: Record<string, number>; fields: Fi
   )
 }
 
-function PendingCard({
-  pending,
+function headingFor(day: string, today: string): string {
+  if (day === today) return 'Today'
+  const [y, m, d] = day.split('-').map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString([], {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  })
+}
+
+function QueueRow({
+  item,
   fields,
   busy,
-  onValues,
-  onRefine,
-  onSave,
-  onDiscard,
+  onChanged,
 }: {
-  pending: PendingEstimate
+  item: QueuedMeal
   fields: FieldConfig[]
   busy: boolean
-  onValues: (values: Record<string, number>) => void
-  onRefine: (feedback: string) => void
-  onSave: () => void
-  onDiscard: () => void
+  onChanged: () => void
 }) {
-  const [feedback, setFeedback] = useState('')
-  const correcting = feedback.trim().length > 0
+  const [dropping, setDropping] = useState(false)
+  const [fillText, setFillText] = useState('')
+  const photoInput = useRef<HTMLInputElement>(null)
 
-  // Offered when hand-editing has pulled the calorie figure away from what the
-  // macros account for. Never applied on its own — alcohol and printed labels
-  // are both legitimate reasons for the two to differ.
-  const fromMacros = Math.round(derivedCalories(pending.values))
-  const suggestion =
-    fromMacros > 0 && Math.abs(fromMacros - (pending.values.calories ?? 0)) > 15 ? fromMacros : null
+  const kcal = Math.round(item.values.calories ?? 0)
+
+  async function drop() {
+    await dropQueued(item.id)
+    onChanged()
+  }
+
+  async function fill(body: { description?: string; image?: string }) {
+    await fillQueued(item.id, body)
+    setFillText('')
+    onChanged()
+  }
 
   return (
-    <div className="border-accent bg-surface border p-4">
-      <p className="text-sm font-semibold tracking-tight">{pending.description}</p>
-      {pending.assumptions && (
-        <p className="text-ink-dim mt-1 text-sm italic">{pending.assumptions}</p>
-      )}
-
-      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
-        {fields.map((field) => (
-          <label key={field.id} className="block">
-            <span className="text-ink-dim flex items-center gap-1 text-[0.65rem] tracking-wide uppercase">
-              <span
-                aria-hidden="true"
-                className="size-2 shrink-0"
-                style={{ background: field.color }}
-              />
-              {field.label}
-            </span>
-            {/* Uncontrolled, and remounted per refinement round via the key, so
-                the box can be emptied to retype. A controlled value coerced
-                through Number() puts a 0 back the moment you clear it. */}
-            <input
-              key={`${field.id}-${pending.rounds}`}
-              type="text"
-              inputMode="decimal"
-              defaultValue={pending.values[field.id] ?? ''}
-              onChange={(event) =>
-                onValues({ ...pending.values, [field.id]: Number(event.target.value) || 0 })
-              }
-              className="border-line focus:border-accent mt-1 w-full border bg-transparent px-2 py-1.5 font-mono text-sm outline-none"
-            />
-          </label>
-        ))}
+    <li className="px-1 py-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="min-w-0 truncate text-sm font-medium">
+          {item.status === 'working'
+            ? item.source === 'photo'
+              ? 'Photograph'
+              : item.description || 'estimating…'
+            : item.description || <span className="text-ink-dim italic">quick entry</span>}
+        </p>
+        <span className="text-ink-dim shrink-0 font-mono text-xs tabular-nums">
+          {item.status === 'working'
+            ? 'working…'
+            : item.status === 'empty'
+              ? 'needs input'
+              : `+${kcal}`}
+        </span>
       </div>
 
-      {suggestion !== null && (
-        <p className="text-ink-dim mt-3 flex items-center gap-2 font-mono text-xs">
-          macros come to {suggestion} kcal
+      {item.status === 'ready' && item.assumptions && (
+        <p className="text-ink-dim mt-1 text-xs italic">{item.assumptions}</p>
+      )}
+
+      {item.status === 'ready' && (
+        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+          {fields.map((field) =>
+            item.values[field.id] === undefined ? null : (
+              <span key={field.id} className="flex items-center gap-1.5">
+                <span
+                  aria-hidden="true"
+                  className="size-2 shrink-0"
+                  style={{ background: field.color }}
+                />
+                <span className="text-ink-dim text-[0.65rem] tracking-wide uppercase">
+                  {field.label}
+                </span>
+                <span className="font-mono text-xs tabular-nums">
+                  {Math.round(item.values[field.id])}
+                </span>
+              </span>
+            ),
+          )}
+        </div>
+      )}
+
+      {item.status === 'empty' && (
+        <div className="mt-2 space-y-2">
+          {item.reason && <p className="text-danger text-xs">{item.reason}</p>}
+          <div className="flex gap-2">
+            <input
+              value={fillText}
+              onChange={(event) => setFillText(event.target.value)}
+              onKeyDown={(event) =>
+                event.key === 'Enter' &&
+                fillText.trim() &&
+                void fill({ description: fillText.trim() })
+              }
+              placeholder="Describe it, or add a photo"
+              className="border-line focus:border-accent min-w-0 flex-1 border bg-transparent px-3 py-2 text-sm outline-none"
+            />
+            <input
+              ref={photoInput}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              hidden
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                event.target.value = ''
+                if (!file) return
+                void shrink(file).then((image) => fill({ image }))
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => photoInput.current?.click()}
+              aria-label="Photograph instead"
+              className="border-line hover:border-accent grid min-h-11 min-w-11 place-items-center border"
+            >
+              <Icon name="camera" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {item.status !== 'working' && (
+        <div className="mt-2 flex justify-end">
           <button
             type="button"
-            onClick={() => onValues({ ...pending.values, calories: suggestion })}
-            className="border-line hover:border-accent text-ink border px-2 py-0.5"
+            disabled={busy}
+            onClick={() => (dropping ? void drop() : setDropping(true))}
+            onBlur={() => setDropping(false)}
+            className={`min-h-11 border px-3 text-xs disabled:opacity-50 ${
+              dropping ? 'border-danger text-danger' : 'border-line hover:border-danger'
+            }`}
           >
-            use it
+            {dropping ? 'Tap again to drop' : 'Drop'}
           </button>
-        </p>
+        </div>
       )}
-
-      <div className="mt-4 flex gap-2">
-        <input
-          value={feedback}
-          onChange={(event) => setFeedback(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' && feedback.trim()) {
-              onRefine(feedback.trim())
-              setFeedback('')
-            }
-          }}
-          disabled={busy}
-          placeholder="Not right? Say what to change…"
-          className="border-line focus:border-accent min-w-0 flex-1 border bg-transparent px-3 py-2 text-sm outline-none disabled:opacity-50"
-        />
-      </div>
-
-      <div className="mt-3 flex gap-2">
-        {/* An unsent correction locks logging. Otherwise the obvious big button
-            sits right under the box you just typed in, and one thumb-tap saves
-            the old numbers and throws the correction away. */}
-        <button
-          type="button"
-          onClick={onSave}
-          disabled={busy || correcting}
-          className="bg-accent grow px-4 py-2.5 text-sm font-medium text-slate-50 disabled:opacity-50 dark:text-slate-900"
-        >
-          {busy ? 'working…' : correcting ? 'Send your change first' : 'Log it'}
-        </button>
-        <button
-          type="button"
-          onClick={onDiscard}
-          disabled={busy}
-          className="border-line hover:border-danger px-4 py-2.5 text-sm font-medium disabled:opacity-50"
-        >
-          Discard
-        </button>
-      </div>
-    </div>
+    </li>
   )
 }
 
 export function MainTab({ settings }: { settings: Settings | null }) {
   const weight = usePolled('event-driven', getWeight)
-  // When the computed target is on, it stands in for the hand-set calorie goal
-  // everywhere below without any of this knowing about weight.
   const fields = withEffectiveGoal(
     tracked(settings),
     settings,
     weight.status === 'ok' ? weight.data.expenditure : null,
   )
-  const day = usePolled('event-driven', getDay)
+  const review = usePolled('ambient', getReview)
   const recent = usePolled('event-driven', () => getRecent().then((r) => r.meals))
   const promoted = usePolled('event-driven', () => getRange('fortnight'))
 
   const [text, setText] = useState('')
-  const [pending, setPending] = useState<PendingEstimate | null>(null)
+  const [adjust, setAdjust] = useState('')
   const [busy, setBusy] = useState(false)
-  const [stage, setStage] = useState<'text' | 'photo'>('text')
   const [error, setError] = useState<string | null>(null)
   const input = useRef<HTMLInputElement>(null)
   const photoInput = useRef<HTMLInputElement>(null)
 
   function refreshAll() {
-    day.refresh()
+    review.refresh()
     recent.refresh()
     promoted.refresh()
   }
@@ -226,18 +242,16 @@ export function MainTab({ settings }: { settings: Settings | null }) {
     event.preventDefault()
     const value = text.trim()
     if (!value || busy) return
-
     setError(null)
     setBusy(true)
     try {
       if (isBareNumber(value)) {
-        await logDirect('', { calories: Number(value) })
-        setText('')
-        refreshAll()
+        await queueDirect('', { calories: Number(value) })
       } else {
-        setPending(await startEstimate(value))
-        setText('')
+        await queueText(value)
       }
+      setText('')
+      refreshAll()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'that did not work')
     } finally {
@@ -250,41 +264,11 @@ export function MainTab({ settings }: { settings: Settings | null }) {
     if (busy) return
     setError(null)
     setBusy(true)
-    setStage('photo')
     try {
-      // Shrink on the device: a phone's full-resolution photo is slow to send
-      // and expensive to look at, for no gain in judging a plate of food.
-      setPending(await estimateFromPhoto(await shrink(file)))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'could not read that photo')
-    } finally {
-      setBusy(false)
-      setStage('text')
-    }
-  }
-
-  async function refine(feedback: string) {
-    if (!pending) return
-    setBusy(true)
-    setError(null)
-    try {
-      setPending(await refineEstimate(pending.id, feedback))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'that did not work')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function save() {
-    if (!pending) return
-    setBusy(true)
-    try {
-      await commitEstimate(pending.id, pending.values)
-      setPending(null)
+      await queuePhoto(await shrink(file))
       refreshAll()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'could not log that')
+      setError(err instanceof Error ? err.message : 'could not queue that photo')
     } finally {
       setBusy(false)
     }
@@ -293,23 +277,59 @@ export function MainTab({ settings }: { settings: Settings | null }) {
   async function relog(description: string, values: Record<string, number>) {
     setBusy(true)
     try {
-      await logDirect(description, values)
+      await queueDirect(description, values)
       refreshAll()
     } finally {
       setBusy(false)
     }
   }
 
-  const totals = day.status === 'ok' ? day.data.totals : {}
+  async function sendAdjust() {
+    if (!review.status || review.status !== 'ok') return
+    const said = adjust.trim()
+    if (!said || busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      await adjustQueued(review.data.day, said)
+      setAdjust('')
+      refreshAll()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'could not adjust')
+    } finally {
+      setBusy(false)
+    }
+  }
 
-  // Calories leads and gets its own bar; the rest are supporting numbers.
+  async function approve() {
+    if (review.status !== 'ok') return
+    setBusy(true)
+    setError(null)
+    try {
+      await approveDay(review.data.day)
+      refreshAll()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'could not approve')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const rest = fields.filter((field) => field.id !== 'calories')
+  const data = review.status === 'ok' ? review.data : null
+  const suspended = Boolean(data?.suspended)
+  const items = data?.items ?? []
+  const canApprove = items.length > 0 && items.every((item) => item.status === 'ready')
 
   return (
     <div className="space-y-5">
-      <CaloriesBar totals={totals} fields={fields} />
+      <CaloriesBar
+        totals={data?.totals ?? {}}
+        fields={fields}
+        pendingTotals={data?.pendingTotals}
+      />
 
-      {settings?.weight.onMain && weight.status === 'ok' && (
+      {settings?.weight.onMain && weight.status === 'ok' && !suspended && (
         <WeightBar
           settings={settings.weight}
           expenditure={weight.data.expenditure}
@@ -317,52 +337,53 @@ export function MainTab({ settings }: { settings: Settings | null }) {
         />
       )}
 
-      <form onSubmit={submit}>
-        <div className="relative">
-          <input
-            ref={input}
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            disabled={busy || pending !== null}
-            autoFocus
-            enterKeyHint="done"
-            placeholder="A number, or what you ate…"
-            className="border-line bg-surface focus:border-accent w-full border py-3.5 pr-14 pl-4 text-base outline-none disabled:opacity-50"
-          />
+      {suspended && data && (
+        <p className="text-accent text-sm">
+          Review {headingFor(data.day, data.today)} before logging anything new. Weight is still
+          available.
+        </p>
+      )}
 
-          {/* `capture` opens the camera straight away on a phone rather than the
-              photo library, which is the whole point of the button. */}
-          <input
-            ref={photoInput}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            hidden
-            onChange={(event) => {
-              const file = event.target.files?.[0]
-              event.target.value = ''
-              if (file) void fromPhoto(file)
-            }}
-          />
-          <button
-            type="button"
-            onClick={() => photoInput.current?.click()}
-            disabled={busy || pending !== null}
-            aria-label="Photograph the meal instead"
-            className="text-ink-dim hover:text-accent absolute inset-y-0 right-0 grid w-14 place-items-center disabled:opacity-50"
-          >
-            <Icon name="camera" className="!h-6 !w-6" />
-          </button>
-        </div>
-
-        {busy && !pending && (
-          <p className="text-ink-dim mt-2 animate-pulse font-mono text-xs">
-            {stage === 'photo'
-              ? 'looking at the photo — this takes a moment…'
-              : 'estimating — this takes a few seconds…'}
-          </p>
-        )}
-      </form>
+      {!suspended && (
+        <form onSubmit={submit}>
+          <div className="relative">
+            <input
+              ref={input}
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+              disabled={busy}
+              autoFocus
+              enterKeyHint="done"
+              placeholder="A number, or what you ate…"
+              className="border-line bg-surface focus:border-accent w-full border py-3.5 pr-14 pl-4 text-base outline-none disabled:opacity-50"
+            />
+            <input
+              ref={photoInput}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              hidden
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                event.target.value = ''
+                if (file) void fromPhoto(file)
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => photoInput.current?.click()}
+              disabled={busy}
+              aria-label="Photograph the meal instead"
+              className="text-ink-dim hover:text-accent absolute inset-y-0 right-0 grid w-14 place-items-center disabled:opacity-50"
+            >
+              <Icon name="camera" className="!h-6 !w-6" />
+            </button>
+          </div>
+          {busy && (
+            <p className="text-ink-dim mt-2 font-mono text-xs">queued — you can lock the phone</p>
+          )}
+        </form>
+      )}
 
       {error && (
         <p role="alert" className="text-danger text-sm">
@@ -370,29 +391,59 @@ export function MainTab({ settings }: { settings: Settings | null }) {
         </p>
       )}
 
-      {pending && (
-        <PendingCard
-          pending={pending}
-          fields={fields}
-          busy={busy}
-          onValues={(values) => setPending({ ...pending, values })}
-          onRefine={refine}
-          onSave={save}
-          onDiscard={() => setPending(null)}
-        />
+      {review.status === 'loading' && <p className="text-ink-dim text-sm">loading…</p>}
+      {review.status === 'error' && <p className="text-danger text-sm">{review.message}</p>}
+
+      {data && items.length > 0 && (
+        <div>
+          <p className="text-ink-dim mb-2 text-[0.65rem] font-medium tracking-wide uppercase">
+            {headingFor(data.day, data.today)} · review
+          </p>
+          <ul className="divide-line divide-y">
+            {items.map((item) => (
+              <QueueRow
+                key={item.id}
+                item={item}
+                fields={fields}
+                busy={busy}
+                onChanged={refreshAll}
+              />
+            ))}
+          </ul>
+
+          <div className="mt-4 space-y-2">
+            <input
+              value={adjust}
+              onChange={(event) => setAdjust(event.target.value)}
+              onKeyDown={(event) => event.key === 'Enter' && void sendAdjust()}
+              disabled={busy || items.every((item) => item.status !== 'ready')}
+              placeholder="Adjust the day in one sentence…"
+              className="border-line focus:border-accent w-full border bg-transparent px-3 py-2 text-sm outline-none disabled:opacity-50"
+            />
+            <button
+              type="button"
+              onClick={approve}
+              disabled={busy || !canApprove}
+              className="bg-accent min-h-11 w-full px-4 text-sm font-medium text-slate-50 disabled:opacity-50 dark:text-slate-900"
+            >
+              {canApprove ? 'Approve the day' : 'Waiting for every item to have numbers'}
+            </button>
+          </div>
+        </div>
       )}
 
       <div>
         <p className="text-ink-dim mb-2 text-[0.65rem] font-medium tracking-wide uppercase">
-          Today
-          {day.status === 'ok'
-            ? ` · ${day.data.entries.length} ${day.data.entries.length === 1 ? 'log' : 'logs'}`
+          {data ? headingFor(data.day, data.today) : 'Today'}
+          {data
+            ? ` · ${data.entries.length + items.filter((i) => i.status === 'ready').length} meals`
             : ''}
         </p>
-        <Totals totals={totals} fields={rest} />
+        <Totals totals={data?.totals ?? {}} fields={rest} />
       </div>
 
       {promoted.status === 'ok' &&
+        !suspended &&
         fields
           .filter((field) => field.onMain)
           .map((field) => (
@@ -406,7 +457,7 @@ export function MainTab({ settings }: { settings: Settings | null }) {
             />
           ))}
 
-      {!pending && recent.status === 'ok' && recent.data.length > 0 && (
+      {!suspended && recent.status === 'ok' && recent.data.length > 0 && (
         <div>
           <p className="text-ink-dim text-[0.65rem] font-medium tracking-wide uppercase">Again</p>
           <div className="mt-2 flex flex-wrap gap-2">

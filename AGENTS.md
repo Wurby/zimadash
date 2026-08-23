@@ -217,8 +217,16 @@ a deliberate design choice and is not to be described in any tracked file.
 
 The calorie tracker shells out to Grok Build (`grok -p`) installed on the box,
 so it runs on a subscription that already exists rather than a metered API key.
-That is the whole reason the tool exists instead of a paid app, and the cost is
-several seconds per estimate — the UI is built around the wait, not against it.
+Capture is fire-and-forget: the phone queues the meal (photo, text, a number,
+or an Again chip) and can lock as soon as the server has the bytes. The brain
+runs in the background. Today is the review — pending numbers sit on the bar,
+visually distinct, and do not become log entries until you **Approve the day**.
+One adjustment box lets Grok rewrite whichever meal the sentence refers to.
+
+If the clock rolls over with a pile still open, Today _is_ that unreviewed day
+until you Approve. Logging, Reports, Log and Settings are off; Weight stays on.
+The homepage tile always shows calendar today, plus a review flag if a past day
+is still open.
 
 Two rules:
 
@@ -227,19 +235,21 @@ Two rules:
   for ordinary food, so a normal estimate pays no latency for it. A photograph
   is attached as an image block in the prompt (`grok --prompt-file`), not
   opened with `read_file` — that extra tool round blew the ~100s Cloudflare
-  tunnel budget. **`web_fetch` is deliberately excluded** — it would let a
-  crafted description send this box to an arbitrary URL, which search results
-  do not. This process handles input from the open internet; widening the grant
-  further is not a small change.
-- **A photograph never lands in `DATA_DIR`.** It is written to a temp JSON
-  prompt (image bytes included), read once, and deleted in a `finally`. What
-  survives is the model's own name for the meal and its numbers, which is
-  enough to refine by text afterwards.
+  tunnel budget on the old synchronous path. **`web_fetch` is deliberately
+  excluded** — it would let a crafted description send this box to an arbitrary
+  URL, which search results do not.
+- **A photograph is staged in `DATA_DIR` until the brain has read it**, then
+  deleted. Same reason as the inbox: the upload _is_ the payload and has to
+  survive a dead brain or a reboot mid-job. What is approved later is the
+  model's name and numbers. The HTTP request never waits on Grok; the only
+  watchdog is 30 minutes (Grok's own default answer timeout). A hang stays
+  `working`. A real failure (auth, crash, unparseable reply, or that watchdog)
+  becomes an empty slot you fill with another photo or text — the meal is not
+  forgotten.
 
 Replies are validated strictly — every configured field must come back as a
-plain number — with one retry, then an error. There is deliberately no fallback
-to logging a bare number when the estimator is down: a silently unestimated meal
-is worse than a visible failure.
+plain number — with one retry, then an empty slot. There is deliberately no
+fallback to logging a bare number when the estimator is down.
 
 ## The trainer
 
@@ -352,10 +362,9 @@ snapping: the model chooses, code executes, and that boundary is what makes
 validating the chosen path worth doing. Not `web_search`/`web_fetch` — filing a
 local file needs no network.
 
-**Staged in `DATA_DIR`, not `os.tmpdir()`.** This is a deliberate divergence
-from the estimator's photo handling: a meal photo is ephemeral input, but an
-inbox upload _is_ the payload and has to survive a dead brain, a full disk, or
-the box rebooting mid-job. It lands in `DATA_DIR/inbox/incoming/` before the
+**Staged in `DATA_DIR`, not `os.tmpdir()`.** Same reason as a queued meal
+photo: the upload _is_ the payload and has to survive a dead brain, a full
+disk, or the box rebooting mid-job. It lands in `DATA_DIR/inbox/incoming/` before the
 upload even gets a 202 back, and placement afterward is a rename, not a second
 write. A startup sweep marks anything still `working` after a restart as
 `failed` — the bytes are never lost, just not yet filed.

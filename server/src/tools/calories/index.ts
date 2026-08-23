@@ -35,6 +35,20 @@ import {
   shiftDayKey,
 } from './storage.js';
 import { cachedChips, startClusterLoop } from './clusters.js';
+import {
+  adjustDay,
+  approveDay,
+  dropItem,
+  fillItem,
+  itemsForDay,
+  loggingSuspended,
+  pendingTotalsFor,
+  queueDirect,
+  queuePhoto,
+  queueText,
+  resumeWorking,
+  reviewDay,
+} from './queue.js';
 
 /**
  * Everything under /api/tools/calories. Owns its own files in DATA_DIR and
@@ -108,7 +122,133 @@ router.put('/settings', (req, res) => {
 router.get('/day', (_req, res) => {
   const date = dayKeyFor(Date.now());
   const entries = entriesForDay(date);
-  res.json({ date, totals: totalsFor(entries), entries } satisfies DaySummary);
+  const oldest = reviewDay(date);
+  res.json({
+    date,
+    totals: totalsFor(entries),
+    pendingTotals: pendingTotalsFor(date),
+    entries,
+    unreviewedDay: oldest < date ? oldest : null,
+  } satisfies DaySummary);
+});
+
+router.get('/review', (_req, res) => {
+  const today = dayKeyFor(Date.now());
+  const day = reviewDay(today);
+  const entries = entriesForDay(day);
+  const items = itemsForDay(day);
+  res.json({
+    today,
+    day,
+    suspended: loggingSuspended(today),
+    items,
+    entries,
+    totals: totalsFor(entries),
+    pendingTotals: pendingTotalsFor(day),
+  });
+});
+
+router.post('/queue/photo', (req, res) => {
+  const raw = typeof req.body?.image === 'string' ? req.body.image : '';
+  const base64 = raw.includes(',') ? raw.slice(raw.indexOf(',') + 1) : raw;
+  if (!base64) {
+    res.status(400).json({ error: 'no photo received' });
+    return;
+  }
+  if (base64.length > 12_000_000) {
+    res.status(413).json({ error: 'that photo is too large' });
+    return;
+  }
+  if (loggingSuspended(dayKeyFor(Date.now()))) {
+    res.status(409).json({ error: 'review the previous day before logging' });
+    return;
+  }
+  res.status(202).json(queuePhoto(base64));
+});
+
+router.post('/queue/text', (req, res) => {
+  const description = typeof req.body?.description === 'string' ? req.body.description.trim() : '';
+  if (!description) {
+    res.status(400).json({ error: 'describe what you ate' });
+    return;
+  }
+  if (loggingSuspended(dayKeyFor(Date.now()))) {
+    res.status(409).json({ error: 'review the previous day before logging' });
+    return;
+  }
+  res.status(202).json(queueText(description));
+});
+
+router.post('/queue/direct', (req, res) => {
+  const description = typeof req.body?.description === 'string' ? req.body.description.trim() : '';
+  const values = req.body?.values as Record<string, number> | undefined;
+  if (!values || typeof values !== 'object') {
+    res.status(400).json({ error: 'values are required' });
+    return;
+  }
+  const allowed = new Set(trackedFields().map((field) => field.id));
+  const clean: Record<string, number> = {};
+  for (const [key, value] of Object.entries(values)) {
+    if (allowed.has(key) && typeof value === 'number' && Number.isFinite(value)) {
+      clean[key] = value;
+    }
+  }
+  if (Object.keys(clean).length === 0) {
+    res.status(400).json({ error: 'nothing to log' });
+    return;
+  }
+  if (loggingSuspended(dayKeyFor(Date.now()))) {
+    res.status(409).json({ error: 'review the previous day before logging' });
+    return;
+  }
+  res.status(202).json(queueDirect(description, clean));
+});
+
+router.delete('/queue/:id', (req, res) => {
+  if (!dropItem(req.params.id)) {
+    res.status(409).json({ error: 'cannot drop that item yet' });
+    return;
+  }
+  res.json({ ok: true });
+});
+
+router.post('/queue/:id/fill', (req, res) => {
+  const raw = typeof req.body?.image === 'string' ? req.body.image : '';
+  const base64 = raw.includes(',') ? raw.slice(raw.indexOf(',') + 1) : raw;
+  const description = typeof req.body?.description === 'string' ? req.body.description.trim() : '';
+  const item = fillItem(req.params.id, description || undefined, base64 || undefined);
+  if (!item) {
+    res.status(409).json({ error: 'cannot fill that item yet' });
+    return;
+  }
+  res.status(202).json(item);
+});
+
+router.post('/queue/adjust', async (req, res) => {
+  const feedback = typeof req.body?.feedback === 'string' ? req.body.feedback.trim() : '';
+  if (!feedback) {
+    res.status(400).json({ error: 'say what to change' });
+    return;
+  }
+  const today = dayKeyFor(Date.now());
+  const day = typeof req.body?.day === 'string' ? req.body.day : reviewDay(today);
+  const result = await adjustDay(day, feedback);
+  if (result.error) {
+    res.status(503).json({ error: result.error });
+    return;
+  }
+  res.json({ ok: true, items: itemsForDay(day) });
+});
+
+router.post('/queue/approve', (req, res) => {
+  const today = dayKeyFor(Date.now());
+  const day = typeof req.body?.day === 'string' ? req.body.day : reviewDay(today);
+  const result = approveDay(day);
+  if ('error' in result) {
+    res.status(409).json({ error: result.error });
+    return;
+  }
+  res.json({ ok: true });
 });
 
 /** Daily totals across a range, for the graphs. Days with no entries are absent. */
@@ -426,6 +566,7 @@ router.delete('/entries/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+resumeWorking();
 startClusterLoop();
 
 const tool: ServerTool = { slug: 'calories', router };

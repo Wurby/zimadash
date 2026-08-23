@@ -7,6 +7,7 @@ import type {
   LogGrain,
   LogSummary,
   PendingEstimate,
+  QueuedMeal,
   RangeKey,
   Settings,
   WeightReading,
@@ -104,6 +105,54 @@ export const searchLog = (q: string) =>
   api<{ hits: LogHit[] }>(`${BASE}/log/search?q=${encodeURIComponent(q)}`)
 
 export const getRecent = () => api<{ meals: RecentMeal[] }>(`${BASE}/recent`)
+
+export interface ReviewState {
+  today: string
+  day: string
+  suspended: boolean
+  items: QueuedMeal[]
+  entries: Entry[]
+  totals: Record<string, number>
+  pendingTotals: Record<string, number>
+}
+
+export const getReview = () => api<ReviewState>(`${BASE}/review`)
+
+export const queuePhoto = (image: string) =>
+  api<QueuedMeal>(`${BASE}/queue/photo`, { method: 'POST', body: JSON.stringify({ image }) })
+
+export const queueText = (description: string) =>
+  api<QueuedMeal>(`${BASE}/queue/text`, {
+    method: 'POST',
+    body: JSON.stringify({ description }),
+  })
+
+export const queueDirect = (description: string, values: Record<string, number>) =>
+  api<QueuedMeal>(`${BASE}/queue/direct`, {
+    method: 'POST',
+    body: JSON.stringify({ description, values }),
+  })
+
+export const dropQueued = (id: string) =>
+  api<{ ok: true }>(`${BASE}/queue/${id}`, { method: 'DELETE' })
+
+export const fillQueued = (id: string, body: { description?: string; image?: string }) =>
+  api<QueuedMeal>(`${BASE}/queue/${id}/fill`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+
+export const adjustQueued = (day: string, feedback: string) =>
+  api<{ ok: true; items: QueuedMeal[] }>(`${BASE}/queue/adjust`, {
+    method: 'POST',
+    body: JSON.stringify({ day, feedback }),
+  })
+
+export const approveDay = (day: string) =>
+  api<{ ok: true }>(`${BASE}/queue/approve`, {
+    method: 'POST',
+    body: JSON.stringify({ day }),
+  })
 
 export const startEstimate = (description: string) =>
   api<PendingEstimate>(`${BASE}/estimate`, {
