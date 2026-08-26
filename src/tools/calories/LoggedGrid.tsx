@@ -24,6 +24,12 @@ const FILL: Record<Kind, string> = {
   over: 'bg-danger',
 }
 
+/** Stripes on "over" so hue is never the only encoding. */
+const HATCH = {
+  backgroundImage:
+    'repeating-linear-gradient(-45deg, transparent, transparent 2px, rgb(255 255 255 / 0.45) 2px, rgb(255 255 255 / 0.45) 3px)',
+}
+
 const LABEL: Record<Kind, string> = {
   empty: 'not logged',
   logged: 'logged',
@@ -56,7 +62,9 @@ export function LoggedGrid({
 
   return (
     <div>
-      <p className="text-ink-dim text-xs tracking-wide uppercase">Days</p>
+      <p className="text-ink-dim text-xs tracking-wide uppercase">
+        {calorieGoal !== null ? 'Days on the calorie goal' : 'Days logged'}
+      </p>
       <div ref={scroller} className="mt-2 overflow-x-auto">
         <div
           className="grid w-max"
@@ -89,6 +97,7 @@ export function LoggedGrid({
                     : `${date}, ${LABEL[kind]}`
                 }
                 className={kind === 'empty' ? 'bg-line/60' : FILL[kind]}
+                style={kind === 'over' ? HATCH : undefined}
               />
             )
           })}
@@ -102,7 +111,7 @@ export function LoggedGrid({
               on track
             </li>
             <li className="flex items-center gap-1.5">
-              <span aria-hidden="true" className="bg-danger size-2.5" />
+              <span aria-hidden="true" className="bg-danger size-2.5" style={HATCH} />
               over
             </li>
           </>

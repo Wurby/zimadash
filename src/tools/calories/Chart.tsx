@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import type { Point } from './points'
 
 export type { Point }
@@ -36,8 +36,8 @@ const W = 640
 const H = 168
 // Right pad is a label gutter: "goal 2200" / "burns 2500" used to sit on top of
 // the last bars, which is the whole reason they were unreadable.
-const PAD = { top: 16, right: 86, bottom: 28, left: 52 }
-const LABEL_GAP = 16
+const PAD = { top: 16, right: 74, bottom: 28, left: 48 }
+const LABEL_GAP = 14
 
 const niceCeiling = (value: number): number => {
   if (value <= 0) return 1
@@ -97,6 +97,8 @@ export function Chart({
   stacks,
   faint,
   onOpen,
+  caption,
+  legend,
 }: {
   points: Point[]
   color: string
@@ -112,8 +114,14 @@ export function Chart({
   /** Dim a bar (incomplete weeks). Aligned with `points`. */
   faint?: boolean[]
   onOpen?: (date: string) => void
+  /** The *so what* — sits under the plot, not in the title. */
+  caption?: string
+  /** Backup encoding so a stacked series is never colour-only. */
+  legend?: Array<{ color: string; label: string }>
 }) {
   const [hover, setHover] = useState<number | null>(null)
+  const titleId = useId()
+  const descId = useId()
 
   const values = points.map((p) => p.value).filter((v): v is number => v !== null)
   if (values.length === 0) {
@@ -152,37 +160,86 @@ export function Chart({
   }
 
   const unitSuffix = unit === 'kcal' ? '' : unit
+  const peak = Math.round(Math.max(...values))
   const readout =
     active?.value != null
       ? `${shortDate(active.date)} · ${Math.round(active.value)}${unitSuffix}`
-      : `peak ${Math.round(Math.max(...values))}${unitSuffix}`
+      : `peak ${peak}${unitSuffix}`
+  const description = [
+    `${label}. Peak ${peak}${unitSuffix}.`,
+    goal !== null && goal > 0 ? `Goal ${Math.round(goal)}${unitSuffix}.` : null,
+    'Arrow keys move across days.',
+  ]
+    .filter(Boolean)
+    .join(' ')
+
+  function step(delta: number) {
+    let i = hover ?? (delta > 0 ? -1 : points.length)
+    for (;;) {
+      i += delta
+      if (i < 0 || i >= points.length) return
+      if (points[i]?.value !== null) {
+        setHover(i)
+        return
+      }
+    }
+  }
 
   return (
     <div>
       <div className="flex items-baseline justify-between gap-3">
-        <h3 className="flex items-center gap-2 text-sm font-semibold tracking-tight">
+        <h3 id={titleId} className="flex items-center gap-2 text-sm font-semibold tracking-tight">
           {/* The swatch sits beside the name, never instead of it. */}
           <span aria-hidden="true" className="size-2.5 shrink-0" style={{ background: color }} />
           {label}
         </h3>
-        {onOpen && active ? (
-          <button
-            type="button"
-            onClick={() => onOpen(active.date)}
-            className="text-ink-dim hover:text-accent min-h-11 font-mono text-xs tabular-nums"
-          >
-            {readout} · log
-          </button>
-        ) : (
-          <span className="text-ink-dim font-mono text-xs tabular-nums">{readout}</span>
-        )}
+        <div aria-live="polite">
+          {onOpen && active ? (
+            <button
+              type="button"
+              onClick={() => onOpen(active.date)}
+              className="text-ink-dim hover:text-accent min-h-11 font-mono text-xs tabular-nums"
+            >
+              {readout} · log
+            </button>
+          ) : (
+            <span className="text-ink-dim font-mono text-xs tabular-nums">{readout}</span>
+          )}
+        </div>
       </div>
 
       <svg
         viewBox={`0 0 ${W} ${H}`}
-        className="mt-2 w-full touch-pan-y"
+        className="focus-visible:outline-accent mt-2 w-full touch-pan-y focus-visible:outline"
         role="img"
-        aria-label={`${label} per day`}
+        tabIndex={0}
+        aria-labelledby={titleId}
+        aria-describedby={descId}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+            event.preventDefault()
+            step(event.key === 'ArrowRight' ? 1 : -1)
+            return
+          }
+          if (event.key === 'Home') {
+            event.preventDefault()
+            const first = points.findIndex((point) => point.value !== null)
+            if (first >= 0) setHover(first)
+            return
+          }
+          if (event.key === 'End') {
+            event.preventDefault()
+            const last = [...points].reverse().findIndex((point) => point.value !== null)
+            if (last >= 0) setHover(points.length - 1 - last)
+            return
+          }
+          if (event.key === 'Enter' && onOpen && active) {
+            event.preventDefault()
+            onOpen(active.date)
+            return
+          }
+          if (event.key === 'Escape') setHover(null)
+        }}
         // pointermove alone means a touch has to be held and dragged before
         // anything appears, because a tap never produces one. pointerdown makes
         // a single tap — or a single click — land the crosshair straight away.
@@ -198,6 +255,7 @@ export function Chart({
           if (event.pointerType === 'mouse') setHover(null)
         }}
       >
+        <desc id={descId}>{description}</desc>
         {/* Recessive frame: a baseline and a top rule, nothing more. */}
         <line
           x1={PAD.left}
@@ -220,11 +278,11 @@ export function Chart({
           x={PAD.left - 6}
           y={PAD.top + 4}
           textAnchor="end"
-          className="fill-ink-dim text-[17px]"
+          className="fill-ink-dim text-[14px]"
         >
           {top}
         </text>
-        <text x={PAD.left - 6} y={y(0)} textAnchor="end" className="fill-ink-dim text-[17px]">
+        <text x={PAD.left - 6} y={y(0)} textAnchor="end" className="fill-ink-dim text-[14px]">
           0
         </text>
 
@@ -344,19 +402,35 @@ export function Chart({
             key={line.label}
             x={W - PAD.right + 6}
             y={line.labelY + 4}
-            className="fill-ink-dim text-[17px]"
+            className="fill-ink-dim text-[14px]"
           >
             {line.label}
           </text>
         ))}
 
-        <text x={PAD.left} y={H - 4} className="fill-ink-dim text-[17px]">
+        <text x={PAD.left} y={H - 4} className="fill-ink-dim text-[14px]">
           {shortDate(points[0].date)}
         </text>
-        <text x={W - PAD.right} y={H - 4} textAnchor="end" className="fill-ink-dim text-[17px]">
+        <text x={W - PAD.right} y={H - 4} textAnchor="end" className="fill-ink-dim text-[14px]">
           {shortDate(points[points.length - 1].date)}
         </text>
       </svg>
+
+      {legend && legend.length > 0 && (
+        <ul className="text-ink-dim mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[0.65rem]">
+          {legend.map((item) => (
+            <li key={item.label} className="flex items-center gap-1.5">
+              <span
+                aria-hidden="true"
+                className="size-2.5 shrink-0"
+                style={{ background: item.color }}
+              />
+              {item.label}
+            </li>
+          ))}
+        </ul>
+      )}
+      {caption && <p className="text-ink-dim mt-2 text-[0.65rem]">{caption}</p>}
     </div>
   )
 }

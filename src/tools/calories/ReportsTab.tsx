@@ -50,10 +50,31 @@ function WeekdayRow({
   const base = spread > 0 ? floor - spread * 0.2 : 0
   const span = peak - base || 1
   const suffix = unit === 'kcal' ? '' : unit
+  const high = points.reduce(
+    (best, point) =>
+      point.average !== null && (best.average === null || point.average > best.average)
+        ? point
+        : best,
+    points[0] ?? { weekday: 0, average: null },
+  )
+  const low = points.reduce(
+    (best, point) =>
+      point.average !== null && (best.average === null || point.average < best.average)
+        ? point
+        : best,
+    points[0] ?? { weekday: 0, average: null },
+  )
 
   return (
-    <div>
-      <p className="text-ink-dim text-xs tracking-wide uppercase">By weekday</p>
+    <div
+      role="img"
+      aria-label={
+        high.average !== null && low.average !== null
+          ? `Calories by weekday. Highest ${WEEKDAYS[high.weekday]} at ${Math.round(high.average)}${suffix}. Lowest ${WEEKDAYS[low.weekday]} at ${Math.round(low.average)}${suffix}.${spread > 0 ? ' Scale starts near the lowest day, not zero.' : ''}`
+          : 'Calories by weekday. Nothing logged.'
+      }
+    >
+      <p className="text-ink-dim text-xs tracking-wide uppercase">Which weekdays run high</p>
       <div className="mt-2 grid grid-cols-7 gap-1">
         {points.map((point) => (
           <div key={point.weekday} className="flex flex-col items-center gap-1">
@@ -62,7 +83,6 @@ function WeekdayRow({
                 <span
                   className="bg-accent w-full"
                   style={{ height: `${Math.max(8, ((point.average - base) / span) * 100)}%` }}
-                  title={`${WEEKDAYS[point.weekday]} · ${Math.round(point.average)}${suffix}`}
                 />
               ) : (
                 <span className="bg-line/60 h-px w-full" />
@@ -75,6 +95,11 @@ function WeekdayRow({
           </div>
         ))}
       </div>
+      {spread > 0 && (
+        <p className="text-ink-dim mt-2 text-[0.65rem]">
+          Bars start near the lowest day, not zero.
+        </p>
+      )}
     </div>
   )
 }
@@ -179,11 +204,24 @@ function RangeBody({
             markers.push({ value: burns, label: `burns ${Math.round(burns)}` })
           }
         }
+        const captions = [
+          trend ? 'Fainter line is a 7-day mean.' : null,
+          long && calories
+            ? 'Weeks with unlogged days are dimmed. Totals skip those days rather than filling them with zero.'
+            : null,
+        ].filter((line): line is string => Boolean(line))
+        const legend =
+          calories && !long
+            ? (['protein', 'fat', 'carbs'] as const)
+                .map((id) => fields.find((item) => item.id === id))
+                .filter((item): item is FieldConfig => Boolean(item))
+                .map((item) => ({ color: item.color, label: item.label }))
+            : undefined
 
         return (
           <section key={field.id} className="border-line bg-surface border px-4 py-3">
             <Chart
-              label={long && calories ? `${field.label} · weekly` : field.label}
+              label={long && calories ? `${field.label} per week` : `${field.label} per day`}
               color={field.color}
               goal={goal}
               unit={field.unit}
@@ -194,13 +232,9 @@ function RangeBody({
               faint={faint}
               stacks={stacks}
               onOpen={onOpenDay}
+              legend={legend}
+              caption={captions.length > 0 ? captions.join(' ') : undefined}
             />
-            {long && calories && (
-              <p className="text-ink-dim mt-2 text-[0.65rem]">
-                Weeks with unlogged days are dimmed. Totals skip those days rather than filling them
-                with zero.
-              </p>
-            )}
             <dl className="border-line mt-3 flex items-baseline justify-between border-t pt-3">
               <dt className="text-ink-dim text-xs tracking-wide uppercase">
                 Average{long && calories ? ' week' : ` · ${RANGE_LABELS[range].toLowerCase()}`}
