@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { LossRate, Settings } from '@shared/calories'
+import { KCAL_PER_LB, type LossRate, type Settings } from '@shared/calories'
 import { usePolled } from '../../lib/refresh'
 import { deleteWeight, getWeight, putWeight, putSettings, resetBaseline } from './api'
 import { Chart } from './Chart'
@@ -116,13 +116,23 @@ export function WeightTab({
           label="Burns"
           value={expenditure.tdee !== null ? String(expenditure.tdee) : '—'}
           hint={
-            expenditure.status === 'learning' ? `${expenditure.daysNeeded} more days` : 'kcal/day'
+            expenditure.status === 'learning'
+              ? `${expenditure.daysNeeded} more days`
+              : expenditure.tdee !== null
+                ? `${expenditure.tdee * 7} / week`
+                : 'kcal/day'
           }
         />
         <Figure
           label="Target"
           value={expenditure.target !== null ? String(expenditure.target) : '—'}
-          hint={expenditure.atGoal ? 'holding at goal' : 'kcal/day'}
+          hint={
+            expenditure.atGoal
+              ? 'holding at goal'
+              : expenditure.target !== null
+                ? `${expenditure.target * 7} / week`
+                : 'kcal/day'
+          }
         />
         <Figure
           label="Rate"
@@ -130,6 +140,16 @@ export function WeightTab({
           hint={expenditure.projectedDate ? `goal ${expenditure.projectedDate}` : 'lb/week'}
         />
       </div>
+
+      {expenditure.target !== null && !expenditure.atGoal && (
+        <p className="text-ink-dim text-sm">
+          A {config?.rateLbPerWeek ?? 1} lb week is a {(config?.rateLbPerWeek ?? 1) * KCAL_PER_LB}{' '}
+          kcal deficit.
+          {expenditure.tdee !== null
+            ? ` Burns ${expenditure.tdee * 7} · eat ${expenditure.target * 7}.`
+            : ''}
+        </p>
+      )}
 
       {expenditure.status === 'learning' && (
         <p className="text-ink-dim text-sm">

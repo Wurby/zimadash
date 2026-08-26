@@ -1,4 +1,7 @@
 import { useState } from 'react'
+import type { Point } from './points'
+
+export type { Point }
 
 /**
  * Daily totals for one field.
@@ -9,15 +12,21 @@ import { useState } from 'react'
  * with its own scale, and nothing to misread.
  *
  * A single series means the title carries identity, so there is no legend and
- * colour is never the only thing distinguishing anything.
+ * colour is never the only thing distinguishing anything. A rolling mean is the
+ * same quantity smoothed, not a second field, so it may share the scale.
  *
  * Missing days are genuine gaps in the line, not zeros. A day you didn't log is
  * unknown, and drawing it as zero would invent a fast you didn't do.
  */
 
-export interface Point {
-  date: string
-  value: number | null
+export interface Marker {
+  value: number
+  label: string
+}
+
+export interface StackSegment {
+  color: string
+  share: number
 }
 
 // Text inside an SVG scales with the viewBox, so a 640-wide box rendered at
@@ -35,37 +44,8 @@ const niceCeiling = (value: number): number => {
 
 const shortDate = (date: string): string => date.slice(5).replace('-', '/')
 
-export function Chart({
-  points,
-  color,
-  goal,
-  unit,
-  label,
-}: {
-  points: Point[]
-  color: string
-  goal: number | null
-  unit: string
-  label: string
-}) {
-  const [hover, setHover] = useState<number | null>(null)
-
-  const values = points.map((p) => p.value).filter((v): v is number => v !== null)
-  if (values.length === 0) {
-    return <p className="text-ink-dim py-6 text-center text-sm">Nothing logged in this range.</p>
-  }
-
-  const top = niceCeiling(Math.max(...values, goal ?? 0))
-  const plotW = W - PAD.left - PAD.right
-  const plotH = H - PAD.top - PAD.bottom
-
-  const x = (i: number) =>
-    PAD.left + (points.length === 1 ? plotW / 2 : (i / (points.length - 1)) * plotW)
-  const y = (v: number) => PAD.top + plotH - (v / top) * plotH
-
-  // Break the path wherever a day has no data, so the line stops rather than
-  // sloping through a day that never happened.
-  const path = points
+function linePath(points: Point[], x: (i: number) => number, y: (v: number) => number): string {
+  return points
     .map((p, i) => (p.value === null ? null : `${x(i)},${y(p.value)}`))
     .reduce<string[]>(
       (segments, coord) => {
@@ -77,15 +57,78 @@ export function Chart({
     )
     .filter(Boolean)
     .join(' ')
+}
 
+export function Chart({
+  points,
+  color,
+  goal,
+  unit,
+  label,
+  trend,
+  markers,
+  mode = 'line',
+  stacks,
+  faint,
+  onOpen,
+}: {
+  points: Point[]
+  color: string
+  goal: number | null
+  unit: string
+  label: string
+  /** Same-scale rolling mean. Drawn through gaps so a missed day doesn't break it. */
+  trend?: Point[]
+  markers?: Marker[]
+  mode?: 'line' | 'bar'
+  /** Per-day macro shares, aligned with `points`. Empty segments mean a bare number. */
+  stacks?: Array<StackSegment[] | null>
+  /** Dim a bar (incomplete weeks). Aligned with `points`. */
+  faint?: boolean[]
+  onOpen?: (date: string) => void
+}) {
+  const [hover, setHover] = useState<number | null>(null)
+
+  const values = points.map((p) => p.value).filter((v): v is number => v !== null)
+  if (values.length === 0) {
+    return <p className="text-ink-dim py-6 text-center text-sm">Nothing logged in this range.</p>
+  }
+
+  const extra = (markers ?? []).map((marker) => marker.value)
+  const top = niceCeiling(Math.max(...values, goal ?? 0, ...extra))
+  const plotW = W - PAD.left - PAD.right
+  const plotH = H - PAD.top - PAD.bottom
+  const barW = (plotW / points.length) * 0.72
+
+  const x = (i: number) => {
+    if (points.length === 1) return PAD.left + plotW / 2
+    if (mode === 'bar') return PAD.left + ((i + 0.5) / points.length) * plotW
+    return PAD.left + (i / (points.length - 1)) * plotW
+  }
+  const y = (v: number) => PAD.top + plotH - (v / top) * plotH
+
+  const path = linePath(points, x, y)
+  const trendPath = trend ? linePath(trend, x, y) : ''
   const active = hover !== null ? points[hover] : null
+  const lines: Marker[] = [
+    ...(goal !== null && goal > 0 ? [{ value: goal, label: `goal ${Math.round(goal)}` }] : []),
+    ...(markers ?? []),
+  ].filter((line) => line.value > 0 && line.value <= top)
 
   function locate(event: React.PointerEvent<SVGSVGElement>) {
     const box = event.currentTarget.getBoundingClientRect()
     const ratio = (event.clientX - box.left) / box.width
-    const i = Math.round(((ratio * W - PAD.left) / plotW) * (points.length - 1))
+    const along = (ratio * W - PAD.left) / plotW
+    const i =
+      mode === 'bar' ? Math.floor(along * points.length) : Math.round(along * (points.length - 1))
     setHover(Math.min(points.length - 1, Math.max(0, i)))
   }
+
+  const unitSuffix = unit === 'kcal' ? '' : unit
+  const readout =
+    active?.value != null
+      ? `${shortDate(active.date)} · ${Math.round(active.value)}${unitSuffix}`
+      : `peak ${Math.round(Math.max(...values))}${unitSuffix}`
 
   return (
     <div>
@@ -95,11 +138,17 @@ export function Chart({
           <span aria-hidden="true" className="size-2.5 shrink-0" style={{ background: color }} />
           {label}
         </h3>
-        <span className="text-ink-dim font-mono text-xs tabular-nums">
-          {active?.value != null
-            ? `${shortDate(active.date)} · ${Math.round(active.value)}${unit === 'kcal' ? '' : unit}`
-            : `peak ${Math.round(Math.max(...values))}${unit === 'kcal' ? '' : unit}`}
-        </span>
+        {onOpen && active ? (
+          <button
+            type="button"
+            onClick={() => onOpen(active.date)}
+            className="text-ink-dim hover:text-accent min-h-11 font-mono text-xs tabular-nums"
+          >
+            {readout} · log
+          </button>
+        ) : (
+          <span className="text-ink-dim font-mono text-xs tabular-nums">{readout}</span>
+        )}
       </div>
 
       <svg
@@ -152,39 +201,102 @@ export function Chart({
           0
         </text>
 
-        {goal !== null && goal > 0 && goal <= top && (
-          <>
+        {lines.map((line, index) => (
+          <g key={line.label}>
             <line
               x1={PAD.left}
-              y1={y(goal)}
+              y1={y(line.value)}
               x2={W - PAD.right}
-              y2={y(goal)}
+              y2={y(line.value)}
               className="stroke-ink-dim"
               strokeWidth="1"
               strokeDasharray="5 4"
             />
             <text
               x={W - PAD.right}
-              y={y(goal) - 4}
+              y={
+                y(line.value) -
+                4 +
+                (index > 0 && Math.abs(y(line.value) - y(lines[0]!.value)) < 18 ? 16 : 0)
+              }
               textAnchor="end"
               className="fill-ink-dim text-[17px]"
             >
-              goal {goal}
+              {line.label}
             </text>
-          </>
+          </g>
+        ))}
+
+        {mode === 'bar' &&
+          points.map((p, i) => {
+            if (p.value === null) return null
+            const x0 = x(i) - barW / 2
+            const topY = y(p.value)
+            const height = Math.max(0, y(0) - topY)
+            const opacity = faint?.[i] ? 0.45 : 1
+            const segments = stacks?.[i]
+            if (!segments || segments.length === 0) {
+              return (
+                <rect
+                  key={p.date}
+                  x={x0}
+                  y={topY}
+                  width={barW}
+                  height={height}
+                  fill={segments ? undefined : color}
+                  className={segments ? 'fill-ink-dim' : undefined}
+                  opacity={opacity}
+                />
+              )
+            }
+            let acc = 0
+            return (
+              <g key={p.date} opacity={opacity}>
+                {segments.map((segment, s) => {
+                  const h = height * segment.share
+                  const ySeg = y(0) - acc - h
+                  acc += h
+                  return (
+                    <rect
+                      key={`${p.date}-${s}`}
+                      x={x0}
+                      y={ySeg}
+                      width={barW}
+                      height={h}
+                      fill={segment.color}
+                    />
+                  )
+                })}
+              </g>
+            )
+          })}
+
+        {mode === 'line' && (
+          <path
+            d={path}
+            fill="none"
+            stroke={color}
+            strokeWidth="2"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
         )}
 
-        <path
-          d={path}
-          fill="none"
-          stroke={color}
-          strokeWidth="2"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
+        {trendPath && (
+          <path
+            d={trendPath}
+            fill="none"
+            className="stroke-ink"
+            strokeWidth="1.5"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            opacity="0.45"
+          />
+        )}
 
         {/* Dots only when the range is short enough for them to mean anything. */}
-        {points.length <= 31 &&
+        {mode === 'line' &&
+          points.length <= 31 &&
           points.map((p, i) =>
             p.value === null ? null : (
               <circle key={p.date} cx={x(i)} cy={y(p.value)} r={hover === i ? 5 : 3} fill={color} />

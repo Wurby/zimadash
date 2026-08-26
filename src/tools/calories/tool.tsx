@@ -100,12 +100,23 @@ function Tile() {
 
 function View() {
   const [tab, setTab] = useState<Tab>('Today')
+  const [logDate, setLogDate] = useState<string | null>(null)
   const loaded = usePolled('event-driven', getSettings)
   const day = usePolled('ambient', getDay)
   const [override, setOverride] = useState<Settings | null>(null)
   const settings = override ?? (loaded.status === 'ok' ? loaded.data : null)
   const locked = day.status === 'ok' && Boolean(day.data.unreviewedDay)
   const shown: Tab = locked && tab !== 'Weight' ? 'Today' : tab
+
+  function openTab(name: Tab) {
+    if (name === 'Log' && tab !== 'Log') setLogDate(null)
+    setTab(name)
+  }
+
+  function openLogDay(date: string) {
+    setLogDate(date)
+    setTab('Log')
+  }
 
   return (
     <div>
@@ -116,7 +127,7 @@ function View() {
             <button
               key={name}
               type="button"
-              onClick={() => !blocked && setTab(name)}
+              onClick={() => !blocked && openTab(name)}
               disabled={blocked}
               aria-current={shown === name ? 'page' : undefined}
               className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
@@ -136,8 +147,10 @@ function View() {
       <div className="mt-6">
         {shown === 'Today' && <MainTab settings={settings} />}
         {shown === 'Weight' && <WeightTab settings={settings} onSaved={setOverride} />}
-        {shown === 'Reports' && <ReportsTab settings={settings} />}
-        {shown === 'Log' && <LogTab settings={settings} />}
+        {shown === 'Reports' && <ReportsTab settings={settings} onOpenDay={openLogDay} />}
+        {shown === 'Log' && (
+          <LogTab key={logDate ?? 'today'} settings={settings} openDate={logDate} />
+        )}
         {shown === 'Settings' && <SettingsTab settings={settings} onSaved={setOverride} />}
       </div>
     </div>

@@ -661,9 +661,15 @@ function SearchPane({ query, onPick }: { query: string; onPick: (date: string) =
   )
 }
 
-export function LogTab({ settings }: { settings: Settings | null }) {
+export function LogTab({
+  settings,
+  openDate = null,
+}: {
+  settings: Settings | null
+  openDate?: string | null
+}) {
   const [grain, setGrain] = useState<LogGrain>('day')
-  const [date, setDate] = useState(() => dayKeyFromMs(Date.now()))
+  const [date, setDate] = useState(() => openDate ?? dayKeyFromMs(Date.now()))
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
   const fields = tracked(settings)

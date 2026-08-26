@@ -1,8 +1,9 @@
-import type {
-  Expenditure,
-  LossRate,
-  WeightReading,
-  WeightSettings,
+import {
+  KCAL_PER_LB,
+  type Expenditure,
+  type LossRate,
+  type WeightReading,
+  type WeightSettings,
 } from '../../shared/calories.js';
 
 /**
@@ -20,8 +21,6 @@ import type {
  * under-log against. That is the spiral worth defending against, and it is a
  * different problem from eating too much.
  */
-
-const KCAL_PER_LB = 3500;
 
 /** Paired days of food and weight before it will commit to a number. */
 const MIN_DAYS = 7;
@@ -159,7 +158,8 @@ export function computeExpenditure(
 
   // At goal it holds steady rather than carrying on cutting. Otherwise the
   // deficit is scaled by how much paired data backs the TDEE estimate.
-  const rate = atGoal || goal === null ? 0 : confidenceScaledRate(settings.rateLbPerWeek, counted.length);
+  const rate =
+    atGoal || goal === null ? 0 : confidenceScaledRate(settings.rateLbPerWeek, counted.length);
   const target = Math.round(tdee - (rate * KCAL_PER_LB) / 7);
 
   let projectedDate: string | null = null;

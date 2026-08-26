@@ -211,6 +211,16 @@ history by name and assumptions. Today’s Again chips are a weekly Grok cluster
 of fuzzy photo names, averaged in code, with the old exact-name list as
 fallback.
 
+**Reports.** A progress view, not a chart dump. This calendar week leads:
+intake against the weekly goal (daily × 7), remaining, and the 3,500 kcal that
+make a pound — Weight and Today carry the same weekly remaining, because that's
+where you look when deciding dinner. Then a range scoreboard (logged days, days
+on the calorie ceiling, protein floor, average vs goal vs the prior period), a
+day grid, weekday averages, and per-field charts. Short ranges are daily
+(calories as composition bars, a rolling mean through the noise); quarter and
+up fold into weeks so a year isn't a scribble. Tapping a day opens it in Log.
+Missing days stay gaps; averages skip them.
+
 **Phase 3 (the grid).** The header is gone; tools, actions, the theme toggle and
 the system readout all live on one grid whose unit is measured per surface. Both
 the arrangement and the sizes are yours: drag to reorder, and in edit mode tap a

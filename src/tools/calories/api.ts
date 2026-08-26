@@ -22,10 +22,15 @@ export interface DayTotals {
   totals: Record<string, number>
 }
 
-export interface RangeData {
+export interface RangeWindow {
   from: string
   to: string
   days: DayTotals[]
+}
+
+export interface RangeData extends RangeWindow {
+  /** The same-length window immediately before `from`. For period-over-period. */
+  previous: RangeWindow
 }
 
 export interface RecentMeal {

@@ -243,6 +243,29 @@ router.post('/queue/approve', (req, res) => {
   res.json({ ok: true });
 });
 
+function rangeWindow(
+  from: string,
+  to: string,
+): {
+  from: string;
+  to: string;
+  days: { date: string; totals: Record<string, number> }[];
+} {
+  const entries = entriesInRange(from, to);
+  const byDay = new Map<string, Entry[]>();
+  for (const entry of entries) {
+    const day = dayKeyFor(entry.at);
+    byDay.set(day, [...(byDay.get(day) ?? []), entry]);
+  }
+  return {
+    from,
+    to,
+    days: [...byDay.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, dayEntries]) => ({ date, totals: totalsFor(dayEntries) })),
+  };
+}
+
 /** Daily totals across a range, for the graphs. Days with no entries are absent. */
 router.get('/range/:range', (req, res) => {
   const range = req.params.range as RangeKey;
@@ -254,20 +277,12 @@ router.get('/range/:range', (req, res) => {
 
   const today = dayKeyFor(Date.now());
   const from = shiftDayKey(today, -(days - 1));
-  const entries = entriesInRange(from, today);
-
-  const byDay = new Map<string, Entry[]>();
-  for (const entry of entries) {
-    const day = dayKeyFor(entry.at);
-    byDay.set(day, [...(byDay.get(day) ?? []), entry]);
-  }
+  const prevTo = shiftDayKey(from, -1);
+  const prevFrom = shiftDayKey(prevTo, -(days - 1));
 
   res.json({
-    from,
-    to: today,
-    days: [...byDay.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, dayEntries]) => ({ date, totals: totalsFor(dayEntries) })),
+    ...rangeWindow(from, today),
+    previous: rangeWindow(prevFrom, prevTo),
   });
 });
 

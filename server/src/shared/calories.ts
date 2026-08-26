@@ -162,6 +162,13 @@ export interface WeightReading {
   lb: number;
 }
 
+/**
+ * kcal in a pound of body mass. A 1 lb week is this much of a deficit — the
+ * number the weekly progress views are in service of, not a daily target
+ * times seven as a trivia fact.
+ */
+export const KCAL_PER_LB = 3500;
+
 /** What the tool has worked out. Absent fields mean it isn't sure yet. */
 export interface Expenditure {
   status: 'learning' | 'ready';
@@ -227,6 +234,14 @@ export function shiftDayKey(dayKey: string, days: number): string {
   const date = new Date(y, m - 1, d, 12);
   date.setDate(date.getDate() + days);
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+export function daysBetween(from: string, to: string): number {
+  const [fy, fm, fd] = from.split('-').map(Number);
+  const [ty, tm, td] = to.split('-').map(Number);
+  const start = new Date(fy, fm - 1, fd, 12).getTime();
+  const end = new Date(ty, tm - 1, td, 12).getTime();
+  return Math.round((end - start) / 86_400_000);
 }
 
 export function weekdaySunday(dayKey: string): number {

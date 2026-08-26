@@ -1,5 +1,12 @@
 import { useRef, useState } from 'react'
-import type { FieldConfig, QueuedMeal, Settings } from '@shared/calories'
+import {
+  dayKeyFromMs,
+  endOfWeek,
+  startOfWeek,
+  type FieldConfig,
+  type QueuedMeal,
+  type Settings,
+} from '@shared/calories'
 import { Icon } from '../../components/Icon'
 import { usePolled } from '../../lib/refresh'
 import { shrink } from './photo'
@@ -8,6 +15,7 @@ import {
   approveDay,
   dropQueued,
   fillQueued,
+  getLogView,
   getRange,
   getRecent,
   getReview,
@@ -20,8 +28,9 @@ import {
 } from './api'
 import { CaloriesBar } from './CaloriesBar'
 import { WeightBar } from './WeightBar'
-import { Chart, type Point } from './Chart'
-import { buildPoints } from './points'
+import { Chart } from './Chart'
+import { buildPoints, rollingMean } from './points'
+import { WeekProgress } from './WeekProgress'
 
 /**
  * Capture is fire-and-forget. The brain runs on the server; this tab only
@@ -224,6 +233,8 @@ export function MainTab({ settings }: { settings: Settings | null }) {
   const review = usePolled('ambient', getReview)
   const recent = usePolled('event-driven', () => getRecent().then((r) => r.meals))
   const promoted = usePolled('event-driven', () => getRange('fortnight'))
+  const [todayKey] = useState(() => dayKeyFromMs(Date.now()))
+  const week = usePolled('event-driven', () => getLogView('week', todayKey))
 
   const [text, setText] = useState('')
   const [adjust, setAdjust] = useState('')
@@ -237,6 +248,7 @@ export function MainTab({ settings }: { settings: Settings | null }) {
     review.refresh()
     recent.refresh()
     promoted.refresh()
+    week.refresh()
   }
 
   async function submit(event: React.FormEvent) {
@@ -331,6 +343,33 @@ export function MainTab({ settings }: { settings: Settings | null }) {
         fields={fields}
         pendingTotals={data?.pendingTotals}
       />
+
+      {week.status === 'ok' && fields.length > 0 && (
+        <WeekProgress
+          totals={week.data.totals}
+          pendingTotals={
+            data && data.day >= startOfWeek(todayKey) && data.day <= endOfWeek(todayKey)
+              ? data.pendingTotals
+              : undefined
+          }
+          fields={fields}
+          today={todayKey}
+          tdee={weight.status === 'ok' ? weight.data.expenditure.tdee : null}
+          rateLbPerWeek={settings?.weight.rateLbPerWeek ?? 1}
+          daysLogged={
+            week.data.summary.daysLogged +
+            (data &&
+            (data.pendingTotals.calories ?? 0) > 0 &&
+            data.day >= startOfWeek(todayKey) &&
+            data.day <= endOfWeek(todayKey) &&
+            !week.data.loggedDays.includes(data.day)
+              ? 1
+              : 0)
+          }
+          atGoal={weight.status === 'ok' ? weight.data.expenditure.atGoal : false}
+          compact
+        />
+      )}
 
       {settings?.weight.onMain && weight.status === 'ok' && !suspended && (
         <WeightBar
@@ -455,16 +494,20 @@ export function MainTab({ settings }: { settings: Settings | null }) {
         !suspended &&
         fields
           .filter((field) => field.onMain)
-          .map((field) => (
-            <Chart
-              key={field.id}
-              label={field.label}
-              color={field.color}
-              goal={field.goal}
-              unit={field.unit}
-              points={buildPoints(promoted.data, field.id) as Point[]}
-            />
-          ))}
+          .map((field) => {
+            const series = buildPoints(promoted.data, field.id)
+            return (
+              <Chart
+                key={field.id}
+                label={field.label}
+                color={field.color}
+                goal={field.goal}
+                unit={field.unit}
+                points={series}
+                trend={series.length > 7 ? rollingMean(series) : undefined}
+              />
+            )
+          })}
 
       {recent.status === 'ok' && recent.data.length > 0 && (
         <div>
