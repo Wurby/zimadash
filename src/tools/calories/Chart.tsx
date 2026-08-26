@@ -34,7 +34,10 @@ export interface StackSegment {
 // axis labels were unreadable. Sizes here are viewBox units, deliberately large.
 const W = 640
 const H = 168
-const PAD = { top: 16, right: 10, bottom: 28, left: 52 }
+// Right pad is a label gutter: "goal 2200" / "burns 2500" used to sit on top of
+// the last bars, which is the whole reason they were unreadable.
+const PAD = { top: 16, right: 86, bottom: 28, left: 52 }
+const LABEL_GAP = 16
 
 const niceCeiling = (value: number): number => {
   if (value <= 0) return 1
@@ -43,6 +46,29 @@ const niceCeiling = (value: number): number => {
 }
 
 const shortDate = (date: string): string => date.slice(5).replace('-', '/')
+
+/** Keep gutter labels from stacking on top of each other when two targets sit close. */
+function layoutLabels(
+  lines: Marker[],
+  y: (v: number) => number,
+): Array<Marker & { labelY: number }> {
+  const placed = lines
+    .map((line) => ({ ...line, labelY: y(line.value) }))
+    .sort((a, b) => a.labelY - b.labelY)
+  for (let i = 1; i < placed.length; i++) {
+    const prev = placed[i - 1]
+    const next = placed[i]
+    if (prev && next && next.labelY - prev.labelY < LABEL_GAP) {
+      next.labelY = prev.labelY + LABEL_GAP
+    }
+  }
+  const minY = PAD.top + 4
+  const maxY = H - 14
+  for (const item of placed) {
+    item.labelY = Math.min(maxY, Math.max(minY, item.labelY))
+  }
+  return placed
+}
 
 function linePath(points: Point[], x: (i: number) => number, y: (v: number) => number): string {
   return points
@@ -114,6 +140,7 @@ export function Chart({
     ...(goal !== null && goal > 0 ? [{ value: goal, label: `goal ${Math.round(goal)}` }] : []),
     ...(markers ?? []),
   ].filter((line) => line.value > 0 && line.value <= top)
+  const labels = layoutLabels(lines, y)
 
   function locate(event: React.PointerEvent<SVGSVGElement>) {
     const box = event.currentTarget.getBoundingClientRect()
@@ -201,32 +228,6 @@ export function Chart({
           0
         </text>
 
-        {lines.map((line, index) => (
-          <g key={line.label}>
-            <line
-              x1={PAD.left}
-              y1={y(line.value)}
-              x2={W - PAD.right}
-              y2={y(line.value)}
-              className="stroke-ink-dim"
-              strokeWidth="1"
-              strokeDasharray="5 4"
-            />
-            <text
-              x={W - PAD.right}
-              y={
-                y(line.value) -
-                4 +
-                (index > 0 && Math.abs(y(line.value) - y(lines[0]!.value)) < 18 ? 16 : 0)
-              }
-              textAnchor="end"
-              className="fill-ink-dim text-[17px]"
-            >
-              {line.label}
-            </text>
-          </g>
-        ))}
-
         {mode === 'bar' &&
           points.map((p, i) => {
             if (p.value === null) return null
@@ -313,6 +314,41 @@ export function Chart({
             strokeWidth="1"
           />
         )}
+
+        {/* Reference lines sit on top of the series, with a surface halo so they
+            still read when they cut through a bar. Labels live in the right
+            gutter rather than over the last day. */}
+        {lines.map((line) => (
+          <g key={`${line.label}-rule`}>
+            <line
+              x1={PAD.left}
+              y1={y(line.value)}
+              x2={W - PAD.right}
+              y2={y(line.value)}
+              className="stroke-surface"
+              strokeWidth="4"
+            />
+            <line
+              x1={PAD.left}
+              y1={y(line.value)}
+              x2={W - PAD.right}
+              y2={y(line.value)}
+              className="stroke-ink"
+              strokeWidth="1.25"
+              strokeDasharray={line.label.startsWith('burns') ? '2 5' : '6 4'}
+            />
+          </g>
+        ))}
+        {labels.map((line) => (
+          <text
+            key={line.label}
+            x={W - PAD.right + 6}
+            y={line.labelY + 4}
+            className="fill-ink-dim text-[17px]"
+          >
+            {line.label}
+          </text>
+        ))}
 
         <text x={PAD.left} y={H - 4} className="fill-ink-dim text-[17px]">
           {shortDate(points[0].date)}

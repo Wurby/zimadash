@@ -43,6 +43,12 @@ function WeekdayRow({
     .map((point) => point.average)
     .filter((value): value is number => value !== null)
   const peak = Math.max(...values, 1)
+  const floor = Math.min(...values, peak)
+  // Scale from a little below the lowest day, not from zero — otherwise 1,900
+  // and 2,400 both sit at ~80% and the whole point of the row is gone.
+  const spread = peak - floor
+  const base = spread > 0 ? floor - spread * 0.2 : 0
+  const span = peak - base || 1
   const suffix = unit === 'kcal' ? '' : unit
 
   return (
@@ -51,17 +57,20 @@ function WeekdayRow({
       <div className="mt-2 grid grid-cols-7 gap-1">
         {points.map((point) => (
           <div key={point.weekday} className="flex flex-col items-center gap-1">
-            <div className="flex h-10 w-full items-end">
+            <div className="flex h-16 w-full items-end">
               {point.average !== null ? (
                 <span
                   className="bg-accent w-full"
-                  style={{ height: `${Math.max(4, (point.average / peak) * 100)}%` }}
+                  style={{ height: `${Math.max(8, ((point.average - base) / span) * 100)}%` }}
                   title={`${WEEKDAYS[point.weekday]} · ${Math.round(point.average)}${suffix}`}
                 />
               ) : (
                 <span className="bg-line/60 h-px w-full" />
               )}
             </div>
+            <span className="font-mono text-[0.65rem] tabular-nums">
+              {point.average !== null ? Math.round(point.average) : '—'}
+            </span>
             <span className="text-ink-dim font-mono text-[0.65rem]">{WEEKDAYS[point.weekday]}</span>
           </div>
         ))}
