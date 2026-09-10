@@ -25,6 +25,12 @@ export interface LastTimeItem {
   onTile: boolean;
   /** Every tap, oldest first. */
   history: number[];
+  /**
+   * Who can see this row. `null` is household — anyone's tap means it was
+   * done. A user id is private to that person. Unchecking shared assigns
+   * ownership to whoever unchecked.
+   */
+  ownerId: string | null;
 }
 
 export interface LastTimeFile {
@@ -54,6 +60,8 @@ export interface ItemView {
   elapsedDays: number | null;
   age: Age;
   taps: number;
+  /** Household row — both of you see it and either tap means it's done. */
+  shared: boolean;
 }
 
 export const MAX_LABEL = 60;
@@ -148,6 +156,7 @@ export function viewOf(item: LastTimeItem, now: number): ItemView {
     elapsedDays,
     age: ageOf(elapsedDays, intervalDays),
     taps: item.history.length,
+    shared: item.ownerId === null,
   };
 }
 

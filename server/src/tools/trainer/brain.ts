@@ -4,15 +4,18 @@ import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
+  IMPLEMENTS,
   loadLadder,
   nextPrescription,
   snapToRung,
   type ExerciseDef,
+  type Implement,
   type Inventory,
   type Session,
   type SessionExercise,
   type SessionType,
 } from '../../shared/trainer.js';
+import { rememberExercises } from './settings.js';
 
 /**
  * Planning a session by shelling out to Grok Build (`grok -p`) on the box.
@@ -29,7 +32,9 @@ import {
  *
  * **No tools at all.** The estimator needs search because a meal can name a
  * restaurant dish; this needs nothing it isn't given. An empty grant is the
- * smallest one that works, so that's what it gets.
+ * smallest one that works, so that's what it gets. Invented movement names
+ * are saved into the catalogue so they can repeat; the equipment is what
+ * decides whether a movement is possible.
  *
  * Unlike the estimator there *is* a correct fallback — the rule-based planner
  * makes a serviceable session on its own — so a failure here is offered rather
@@ -152,19 +157,48 @@ function describe(candidate: Candidate): string {
   return bits.join('\n');
 }
 
-function buildPrompt(type: SessionType, policy: string, candidates: Candidate[]): string {
+function describeInventory(inventory: Inventory): string {
+  const plates =
+    inventory.plates
+      .filter((pair) => pair.pairs > 0)
+      .map((pair) => `${pair.pairs}× ${pair.lb}lb pairs`)
+      .join(', ') || 'none';
+  const dumbbells =
+    inventory.dumbbells
+      .filter((pair) => pair.pairs > 0)
+      .map((pair) => `${pair.pairs}× ${pair.lb}lb`)
+      .join(', ') || 'none';
+  return `Bar: ${inventory.barLb}lb\nPlates: ${plates}\nDumbbells: ${dumbbells}`;
+}
+
+const SESSION_TYPES: SessionType[] = ['Upper A', 'Lower', 'Upper B'];
+
+function buildPrompt(
+  type: SessionType,
+  policy: string,
+  candidates: Candidate[],
+  inventory: Inventory,
+): string {
+  const pool =
+    candidates.length > 0
+      ? `Known repeats — prefer these when they still fit, and honour any note as a constraint:\n\n${candidates.map(describe).join('\n')}`
+      : 'The catalogue is empty. Invent a full session from the equipment.';
+
   return `You are planning one strength-training session for someone who trains at home.
 
 Today's session is **${type}**.
 
-${policy ? `Their brief, which governs everything below:\n\n${policy}\n\n` : ''}Pick the exercises for today from this pool and nothing else. Each one lists
-every load their equipment can actually build — a weight not on that list cannot
-be assembled and is not an option. Where there is history, the adjustment rule
-has already been applied and its result is given as "the rule says"; follow it
-unless you have a specific reason not to, and say so in "reasoning" if you
-depart from it.
+${policy ? `Their brief, which governs everything below:\n\n${policy}\n\n` : ''}The equipment they have. Every load must be assemblable from this; a weight that cannot be built is not an option.
 
-${candidates.map(describe).join('\n')}
+${describeInventory(inventory)}
+
+Implements: bar (EZ bar + plates both sides), plates (plates only, no bar), dumbbell-pair, dumbbell-single, bodyweight, bodyweight-plus.
+
+${pool}
+
+You may invent a movement the equipment can actually do. The catalogue informs repeats and constraints; it is not an allow-list. Equipment decides what is possible.
+
+Where there is history, the adjustment rule has already been applied and its result is given as "the rule says"; follow it unless you have a specific reason not to, and say so in "reasoning" if you depart from it.
 
 Aim for about 45 minutes — usually five or six exercises, fewer if the sets run
 long. Lead with the compounds. Don't repeat a muscle group needlessly, and don't
@@ -175,16 +209,24 @@ Reply with a single JSON object and nothing else — no prose, no code fence:
 {
   "exercises": [
     {
-      "name": "<exactly as written in the pool above>",
-      "weightLb": <number from that exercise's available loads>,
+      "name": "<pool name exactly, or a new name>",
+      "weightLb": <number assemblable on that movement's implement>,
       "sets": <number>,
       "reps": <number>,
       "format": "straight" | "complex" | "density",
-      "instructions": "<one or two sentences: how to perform it, and what to watch. This is read aloud mid-set, so make it about doing the movement — never about why it was chosen.>"
+      "instructions": "<one or two sentences: how to perform it, and what to watch. This is read aloud mid-set, so make it about doing the movement — never about why it was chosen.>",
+      "implement": "<required for a new name>",
+      "kind": "compound" | "accessory",
+      "days": ["Upper A" | "Lower" | "Upper B"],
+      "kneeLoaded": <boolean>,
+      "note": "<why it was chosen. Never spoken.>"
     }
   ],
   "reasoning": "<one short sentence on the shape of today's session>"
 }
+
+For a name already in the pool, omit implement/kind/days/kneeLoaded/note.
+For a new name they are required.
 
 "instructions" is spoken out loud while they are stood in front of the weight.
 Write it as cueing, not commentary. For anything marked KNEE-LOADED, the cueing
@@ -198,11 +240,27 @@ interface Planned {
   reps: number;
   format: 'straight' | 'complex' | 'density';
   instructions: string;
+  definition: ExerciseDef;
+  invented: boolean;
+}
+
+function parseImplement(value: unknown): Implement | null {
+  return typeof value === 'string' && (IMPLEMENTS as string[]).includes(value)
+    ? (value as Implement)
+    : null;
+}
+
+function parseDays(value: unknown, fallback: SessionType): SessionType[] {
+  const raw = Array.isArray(value) ? value : [];
+  const days = raw.filter((day): day is SessionType => SESSION_TYPES.includes(day as SessionType));
+  return days.length > 0 ? days : [fallback];
 }
 
 function parse(
   reply: string,
   candidates: Candidate[],
+  inventory: Inventory,
+  sessionType: SessionType,
 ): { exercises: Planned[]; reasoning: string } {
   // Tolerate a code fence or a stray sentence around the object.
   const match = reply.match(/\{[\s\S]*\}/);
@@ -220,10 +278,37 @@ function parse(
   const exercises: Planned[] = [];
 
   for (const raw of body.exercises as Record<string, unknown>[]) {
-    const found = candidates.find((candidate) => candidate.definition.name === raw.name);
-    // An invented exercise is a real failure — it means the pool was ignored,
-    // and quietly dropping it would hand back a session missing a muscle group.
-    if (!found) throw new Error(`"${String(raw.name)}" is not in the pool`);
+    const name = typeof raw.name === 'string' ? raw.name.trim() : '';
+    if (!name) throw new Error('an exercise is missing a name');
+
+    const found = candidates.find((candidate) => candidate.definition.name === name);
+
+    let definition: ExerciseDef;
+    let ladder: number[];
+    let invented = false;
+
+    if (found) {
+      definition = found.definition;
+      ladder = found.ladder;
+    } else {
+      const implement = parseImplement(raw.implement);
+      if (!implement) throw new Error(`"${name}" needs an implement`);
+      const kind = raw.kind === 'accessory' ? 'accessory' : 'compound';
+      const cue = typeof raw.instructions === 'string' ? raw.instructions.trim().slice(0, 600) : '';
+      const note = typeof raw.note === 'string' ? raw.note.trim().slice(0, 400) : '';
+      definition = {
+        name,
+        implement,
+        kind,
+        days: parseDays(raw.days, sessionType),
+        kneeLoaded: raw.kneeLoaded === true,
+        complex: raw.format === 'complex',
+        cue,
+        note: note || undefined,
+      };
+      ladder = loadLadder(inventory, implement);
+      invented = true;
+    }
 
     const number = (value: unknown) => (typeof value === 'string' ? Number(value) : value);
     const sets = number(raw.sets);
@@ -231,27 +316,29 @@ function parse(
     const weight = number(raw.weightLb);
 
     if (typeof sets !== 'number' || !Number.isFinite(sets) || sets < 1) {
-      throw new Error(`${found.definition.name}: bad sets`);
+      throw new Error(`${definition.name}: bad sets`);
     }
     if (typeof reps !== 'number' || !Number.isFinite(reps) || reps < 1) {
-      throw new Error(`${found.definition.name}: bad reps`);
+      throw new Error(`${definition.name}: bad reps`);
     }
     if (typeof weight !== 'number' || !Number.isFinite(weight)) {
-      throw new Error(`${found.definition.name}: bad weight`);
+      throw new Error(`${definition.name}: bad weight`);
     }
 
     exercises.push({
-      name: found.definition.name,
+      name: definition.name,
       // Snapped rather than rejected: the ladder is the authority, and being a
       // rung out is a rounding slip rather than a misunderstanding.
-      weightLb: snapToRung(found.ladder, weight),
+      weightLb: snapToRung(ladder, weight),
       sets: Math.round(sets),
       reps: Math.round(reps),
       format: raw.format === 'complex' || raw.format === 'density' ? raw.format : 'straight',
       instructions:
         typeof raw.instructions === 'string'
           ? raw.instructions.trim().slice(0, 600)
-          : (found.definition.cue ?? ''),
+          : (definition.cue ?? ''),
+      definition,
+      invented,
     });
   }
 
@@ -329,25 +416,25 @@ export async function planWithModel(
   today: string,
 ): Promise<{ session: Session; reasoning: string }> {
   const candidates = candidatesFor(type, catalogue, inventory, history);
-  if (candidates.length === 0) throw new Error(`nothing in the pool for ${type}`);
-
-  const prompt = buildPrompt(type, policy, candidates);
+  const prompt = buildPrompt(type, policy, candidates, inventory);
 
   const parsed = await serialise(async () => {
     try {
-      return parse(await run(prompt), candidates);
+      return parse(await run(prompt), candidates, inventory, type);
     } catch (first) {
       // One retry — a malformed reply is usually a one-off, and twice in a row
       // is a real problem that shouldn't cost another two minutes.
       if (first instanceof Error && first.message === 'the planner did not respond') throw first;
-      return parse(await run(prompt), candidates);
+      return parse(await run(prompt), candidates, inventory, type);
     }
   });
 
+  rememberExercises(
+    parsed.exercises.filter((planned) => planned.invented).map((planned) => planned.definition),
+  );
+
   const exercises: SessionExercise[] = parsed.exercises.map((planned) => {
-    const definition = candidates.find(
-      (candidate) => candidate.definition.name === planned.name,
-    )!.definition;
+    const definition = planned.definition;
 
     return {
       name: planned.name,

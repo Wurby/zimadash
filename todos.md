@@ -16,7 +16,7 @@ Gaps and bugs in things that already work. Each one has an obvious fix and none
 is a project — this is the list to raid when there's an hour spare. Roughly
 best-first.
 
-- [ ] A way to reset or change the PIN from the UI rather than by SSH
+- [x] A way to reset or change the PIN from the UI rather than by SSH
 - [ ] Write a real `actions.json` (Homebridge scenes, robovac). The plumbing is
       done and untested against a live endpoint; no action is configured yet
 - [ ] Persist whether a badge is expanded. It's component state today, so a
@@ -186,6 +186,15 @@ _Empty. Last cleared after the tile-sizing work._
 ---
 
 ## Built so far
+
+**Household PINs.** More than one PIN can unlock the dash. The PIN picks the
+person; there are no names on the unlock screen. The first PIN is the owner.
+Personal data (calories, trainer, layout, private last-time and countdown
+rows) is per person. Scratch, weather, stats, actions, and shared last-time /
+countdown rows are household. Inbox is owner-only. A logged-in person can add
+another PIN or change their own from the account cell on the grid. Last Time
+and Countdowns have a shared checkmark: either tap means it was done, and
+unchecking it keeps the row for whoever unchecked.
 
 **Phase 0 (foundation), Phase 1 (the shell) and Phase 2 (the calorie tracker)**
 are complete and their loose ends are closed. The registry proved itself: the

@@ -77,6 +77,7 @@ export const itemId = {
   action: (id: string) => `action:${id}`,
   stats: 'system:stats',
   theme: 'system:theme',
+  account: 'system:account',
   edit: 'system:edit',
 } as const;
 

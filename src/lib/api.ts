@@ -56,6 +56,11 @@ export function setPinLength(length: number): void {
   }
 }
 
+/** Login, setup and status are allowed to 401 without killing a session. */
+function isPublicAuth(path: string): boolean {
+  return path === '/api/auth/status' || path === '/api/auth/setup' || path === '/api/auth/login'
+}
+
 export class ApiError extends Error {
   status: number
   body: Record<string, unknown>
@@ -82,7 +87,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(path, { ...init, headers })
   const body = await res.json().catch(() => ({}) as Record<string, unknown>)
 
-  if (res.status === 401 && !path.startsWith('/api/auth/')) {
+  if (res.status === 401 && !isPublicAuth(path)) {
     clearToken()
     window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT))
   }
@@ -112,7 +117,7 @@ export async function apiBlob(path: string, init: RequestInit = {}): Promise<Blo
 
   const res = await fetch(path, { ...init, headers })
 
-  if (res.status === 401 && !path.startsWith('/api/auth/')) {
+  if (res.status === 401 && !isPublicAuth(path)) {
     clearToken()
     window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT))
   }
@@ -150,7 +155,7 @@ export async function apiUpload<T>(
   const res = await fetch(path, { method: 'POST', headers, body: file })
   const body = await res.json().catch(() => ({}) as Record<string, unknown>)
 
-  if (res.status === 401 && !path.startsWith('/api/auth/')) {
+  if (res.status === 401 && !isPublicAuth(path)) {
     clearToken()
     window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT))
   }

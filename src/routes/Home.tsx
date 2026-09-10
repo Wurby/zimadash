@@ -22,7 +22,9 @@ import { Icon } from '../components/Icon'
 import { ActionButton } from '../components/QuickActions'
 import { StatsTile } from '../components/StatsTile'
 import { SizePicker } from '../components/SizePicker'
+import { AccountButton } from '../components/AccountButton'
 import { useReorder } from '../lib/reorder'
+import { useSession } from '../auth/session'
 
 /**
  * The dashboard. One grid holding everything — tools, one-tap actions, the
@@ -99,6 +101,7 @@ function ToolTile({ slug }: { slug: string }) {
 
 export function Home() {
   usePwaManifest(null)
+  const { owner } = useSession()
   const [ref, geometry] = useGrid<HTMLDivElement>()
   const { theme, resolved, cycle } = useTheme()
   const [editing, setEditing] = useState(false)
@@ -115,10 +118,13 @@ export function Home() {
 
   // Everything that can appear, in the order it would take if you'd never
   // rearranged anything.
+  const visibleTools = tools.filter((tool) => tool.meta.slug !== 'inbox' || owner)
+
   const present = [
     itemId.stats,
-    ...tools.map((tool) => itemId.tool(tool.meta.slug)),
+    ...visibleTools.map((tool) => itemId.tool(tool.meta.slug)),
     ...actionList.map((action) => itemId.action(action.id)),
+    itemId.account,
     itemId.theme,
     itemId.edit,
   ]
@@ -177,6 +183,10 @@ export function Home() {
     if (id.startsWith('action:')) {
       const action = actionList.find((candidate) => itemId.action(candidate.id) === id)
       return action ? <ActionButton action={action} /> : null
+    }
+
+    if (id === itemId.account) {
+      return <AccountButton />
     }
 
     if (id === itemId.theme) {

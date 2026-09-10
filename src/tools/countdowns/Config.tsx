@@ -96,6 +96,18 @@ function Row({
         >
           <input
             type="checkbox"
+            checked={item.shared}
+            onChange={(event) => void onPatch({ shared: event.target.checked })}
+            className="accent-accent size-5"
+          />
+          shared
+        </label>
+
+        <label
+          className={`text-ink-dim ${TOUCH} flex cursor-pointer items-center gap-1.5 px-1 text-xs`}
+        >
+          <input
+            type="checkbox"
             checked={item.yearly}
             onChange={(event) => void onPatch({ yearly: event.target.checked })}
             className="accent-accent size-5"
@@ -124,6 +136,7 @@ export function Config() {
   const [label, setLabel] = useState('')
   const [date, setDate] = useState(() => formatDay(new Date()))
   const [yearly, setYearly] = useState(false)
+  const [shared, setShared] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -147,9 +160,10 @@ export function Config() {
 
     setSaving(true)
     await run(async () => {
-      await addCountdown(trimmed, date, yearly)
+      await addCountdown(trimmed, date, yearly, shared)
       setLabel('')
       setYearly(false)
+      setShared(false)
     })
     setSaving(false)
   }
@@ -160,7 +174,8 @@ export function Config() {
         <h2 className="text-sm font-semibold tracking-tight">Add a countdown</h2>
         <p className="text-ink-dim mt-1 text-xs">
           Four at a time. A one-off keeps counting after it passes until you delete it; a yearly one
-          rolls straight on to next year.
+          rolls straight on to next year. Shared ones are household — unchecking shared keeps the
+          row for you and hides it from everyone else.
         </p>
 
         <form onSubmit={create} className="mt-3 flex flex-wrap items-end gap-2">
@@ -211,6 +226,19 @@ export function Config() {
               className="accent-accent size-5"
             />
             every year
+          </label>
+
+          <label
+            className={`text-ink-dim ${TOUCH} mt-1 flex cursor-pointer items-center gap-1.5 px-1 text-xs`}
+          >
+            <input
+              type="checkbox"
+              checked={shared}
+              onChange={(event) => setShared(event.target.checked)}
+              disabled={full}
+              className="accent-accent size-5"
+            />
+            shared
           </label>
 
           <button

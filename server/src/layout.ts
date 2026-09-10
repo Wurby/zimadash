@@ -3,15 +3,19 @@ import { readJson, writeJson } from './paths.js';
 import { BREAKPOINTS, COLUMNS, type Breakpoint, type Layout } from './shared/layout.js';
 
 /**
- * The dashboard arrangement.
+ * The dashboard arrangement, per person.
  *
- * One order shared by every device — packing is dense, so the same sequence
- * fills a phone and a wall display differently on its own. Sizes are stored per
- * surface instead, because six columns is three quarters of a phone and barely
- * a third of the wall: the same span is not the same tile.
+ * One order per user — packing is dense, so the same sequence fills a phone
+ * and a wall display differently on its own. Sizes are stored per surface
+ * instead, because six columns is three quarters of a phone and barely a
+ * third of the wall: the same span is not the same tile.
  */
 
-const FILE = 'layout.json';
+function fileFor(req: Request): string {
+  const id = req.user?.id;
+  if (!id) throw new Error('requireAuth did not run');
+  return `users/${id}/layout.json`;
+}
 
 /** The widest grid there is; nothing may be asked to span more than that. */
 const MAX_SPAN = Math.max(...Object.values(COLUMNS));
@@ -50,8 +54,8 @@ export function parseSizes(raw: unknown): NonNullable<Layout['sizes']> | null {
   return sizes;
 }
 
-export function handleReadLayout(_req: Request, res: Response): void {
-  res.json(readJson<Layout>(FILE) ?? { version: 1, order: [], sizes: {} });
+export function handleReadLayout(req: Request, res: Response): void {
+  res.json(readJson<Layout>(fileFor(req)) ?? { version: 1, order: [], sizes: {} });
 }
 
 export function handleWriteLayout(req: Request, res: Response): void {
@@ -68,6 +72,6 @@ export function handleWriteLayout(req: Request, res: Response): void {
   }
 
   const layout: Layout = { version: 1, order: order as string[], sizes };
-  writeJson(FILE, layout);
+  writeJson(fileFor(req), layout);
   res.json(layout);
 }

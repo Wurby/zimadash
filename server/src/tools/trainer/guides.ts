@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { readJson, writeJson } from '../../paths.js';
+import { personal, readJson, writeJson } from '../../paths.js';
 import type { ExerciseGuide } from '../../shared/trainer.js';
 
 /**
@@ -16,7 +16,9 @@ import type { ExerciseGuide } from '../../shared/trainer.js';
  * advice that quietly contradicts it.
  */
 
-const FILE = 'trainer/guides.json';
+function guidesFile(): string {
+  return personal('trainer/guides.json');
+}
 
 interface GuidesFile {
   guides: ExerciseGuide[];
@@ -27,7 +29,7 @@ export function policyHash(policy: string): string {
 }
 
 function load(): GuidesFile {
-  const file = readJson<GuidesFile>(FILE);
+  const file = readJson<GuidesFile>(guidesFile());
   return file && Array.isArray(file.guides) ? file : { guides: [] };
 }
 
@@ -42,11 +44,11 @@ export function findGuide(exercise: string, policy: string): ExerciseGuide | nul
 export function saveGuide(guide: ExerciseGuide): void {
   const file = load();
   file.guides = [...file.guides.filter((existing) => existing.exercise !== guide.exercise), guide];
-  writeJson(FILE, file);
+  writeJson(guidesFile(), file);
 }
 
 export function forgetGuide(exercise: string): void {
   const file = load();
   file.guides = file.guides.filter((guide) => guide.exercise !== exercise);
-  writeJson(FILE, file);
+  writeJson(guidesFile(), file);
 }

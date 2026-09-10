@@ -7,10 +7,10 @@ import { usePolled } from './refresh'
  * The arrangement of the dashboard: what order things sit in, and how big each
  * one is.
  *
- * One order shared by every device — packing is dense, so the same sequence
- * fills a phone and a wall display differently without needing two lists.
- * Sizes are the opposite: they are stored per surface, because a span means
- * something different against eight columns than against sixteen.
+ * One order per person — packing is dense, so the same sequence fills a phone
+ * and a wall display differently without needing two lists. Sizes are the
+ * opposite: they are stored per surface, because a span means something
+ * different against eight columns than against sixteen.
  *
  * Both save on every change rather than on leaving edit mode: a write is cheap,
  * and it means closing the tab mid-rearrange doesn't lose the rearrange.

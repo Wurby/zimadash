@@ -21,10 +21,10 @@ export function undoTap(id: string): Promise<ItemList> {
   return api<ItemList>(`${BASE}/items/${id}/undo`, { method: 'POST' })
 }
 
-export function addItem(label: string, defaultDays: number): Promise<ItemList> {
+export function addItem(label: string, defaultDays: number, shared: boolean): Promise<ItemList> {
   return api<ItemList>(`${BASE}/items`, {
     method: 'POST',
-    body: JSON.stringify({ label, defaultDays }),
+    body: JSON.stringify({ label, defaultDays, shared }),
   })
 }
 
@@ -33,6 +33,7 @@ export interface ItemPatch {
   defaultDays?: number
   overrideDays?: number | null
   onTile?: boolean
+  shared?: boolean
 }
 
 export function patchItem(id: string, patch: ItemPatch): Promise<ItemList> {

@@ -2,12 +2,23 @@ import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startPolling, getCachedStats, getAllHostIds } from './cache.js';
-import { handleLogin, handleSetup, handleStatus, initSessionSecret, requireAuth } from './auth.js';
+import {
+  handleAddUser,
+  handleChangePin,
+  handleLogin,
+  handleMe,
+  handleSetup,
+  handleStatus,
+  initSessionSecret,
+  migrateAuth,
+  requireAuth,
+} from './auth.js';
 import { handleFireAction, handleListActions } from './actions.js';
 import { createAppShell } from './appShell.js';
 import { serverTools } from './tools/registry.js';
 import { DATA_DIR, ensureDataDir } from './paths.js';
 import { handleReadLayout, handleWriteLayout } from './layout.js';
+import { startCalories } from './tools/calories/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3107;
@@ -16,6 +27,7 @@ const STATIC_DIR = path.resolve(__dirname, '../../dist');
 
 ensureDataDir();
 initSessionSecret();
+migrateAuth();
 
 const app = express();
 
@@ -50,6 +62,10 @@ app.use('/api', requireAuth);
 
 // ─── Authenticated routes ────────────────────────────────────────────────────
 
+app.get('/api/auth/me', handleMe);
+app.post('/api/auth/users', handleAddUser);
+app.put('/api/auth/pin', handleChangePin);
+
 app.get('/api/hosts', (_req, res) => {
   res.json({ hosts: getAllHostIds() });
 });
@@ -71,7 +87,7 @@ app.get('/api/stats/:host', (req, res) => {
 app.get('/api/actions', handleListActions);
 app.post('/api/actions/:id/fire', handleFireAction);
 
-// The dashboard arrangement: one order shared by every device, sizes per surface.
+// The dashboard arrangement: per user, sizes per surface.
 app.get('/api/layout', handleReadLayout);
 app.put('/api/layout', handleWriteLayout);
 
@@ -101,6 +117,7 @@ app.get('*', (req, res) => {
   res.type('html').send(html);
 });
 
+startCalories();
 startPolling();
 
 app.listen(PORT, () => {

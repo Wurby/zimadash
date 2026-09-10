@@ -44,8 +44,9 @@ One process does double duty: it exposes the API **and** serves the built
 frontend as static files from `dist/`. There is no separate web server in front
 of it and no proxy.
 
-The dashboard is behind a PIN. Everything under `/api` requires it except the
-health endpoint, which has to stay open so the deploy can verify itself.
+The dashboard is behind a PIN. Each person has their own; the field on the
+unlock screen is still just the PIN. Everything under `/api` requires it except
+the health endpoint, which has to stay open so the deploy can verify itself.
 
 ### Tools
 

@@ -19,6 +19,10 @@ import {
  * Owns one file in DATA_DIR and reaches into nothing else. The `event-driven`
  * tier in practice: nothing here changes unless you tap it.
  *
+ * Rows are either household (`ownerId: null`) — anyone's tap means it was done
+ * — or private to one user. Unchecking shared hands ownership to whoever
+ * unchecked; everyone else stops seeing the row.
+ *
  * Every derived figure — the effective interval, how overdue a thing is — is
  * computed here and sent down whole, so the tile renders what it is given and
  * the two sides can't disagree about what "overdue" means.
@@ -33,7 +37,9 @@ function load(): LastTimeFile {
   if (!file || !Array.isArray(file.items)) return { items: [] };
 
   // Absorb older records as optional fields with defaults rather than
-  // migrating — the same approach layout.json takes.
+  // migrating — the same approach layout.json takes. ownerId is stamped onto
+  // legacy rows at boot (see migrateAuth), so a missing one here is treated
+  // as private-unknown and hidden rather than silently shared.
   return {
     items: file.items.map((item) => ({
       id: item.id,
@@ -42,7 +48,8 @@ function load(): LastTimeFile {
       overrideDays: item.overrideDays ?? null,
       onTile: item.onTile ?? true,
       history: Array.isArray(item.history) ? item.history : [],
-    })),
+      ownerId: item.ownerId === undefined ? undefined : item.ownerId,
+    })) as LastTimeItem[],
   };
 }
 
@@ -50,9 +57,21 @@ function save(file: LastTimeFile): void {
   writeJson(FILE, file);
 }
 
-function respond(file: LastTimeFile, res: import('express').Response): void {
+function visibleTo(item: LastTimeItem, userId: string): boolean {
+  return item.ownerId === null || item.ownerId === userId;
+}
+
+function userId(req: { user?: { id: string } }): string {
+  const id = req.user?.id;
+  if (!id) throw new Error('requireAuth did not run');
+  return id;
+}
+
+function respond(file: LastTimeFile, res: import('express').Response, uid: string): void {
   const now = Date.now();
-  res.json({ items: file.items.map((item) => viewOf(item, now)) });
+  res.json({
+    items: file.items.filter((item) => visibleTo(item, uid)).map((item) => viewOf(item, now)),
+  });
 }
 
 /** A label that is a non-empty string within the length cap, or null. */
@@ -70,14 +89,16 @@ function cleanInterval(value: unknown): number | null {
   return Math.round(value * 100) / 100;
 }
 
-router.get('/', (_req, res) => {
-  respond(load(), res);
+router.get('/', (req, res) => {
+  respond(load(), res, userId(req));
 });
 
 router.post('/items', (req, res) => {
+  const uid = userId(req);
   const file = load();
+  const visible = file.items.filter((item) => visibleTo(item, uid));
 
-  if (file.items.length >= MAX_ITEMS) {
+  if (visible.length >= MAX_ITEMS) {
     res.status(409).json({ error: `at most ${MAX_ITEMS} items` });
     return;
   }
@@ -107,18 +128,20 @@ router.post('/items', (req, res) => {
     overrideDays: null,
     onTile: true,
     history: [],
+    ownerId: req.body?.shared === true ? null : uid,
   };
 
   file.items.push(item);
   save(file);
-  respond(file, res);
+  respond(file, res, uid);
 });
 
 router.patch('/items/:id', (req, res) => {
+  const uid = userId(req);
   const file = load();
   const item = file.items.find((candidate) => candidate.id === req.params.id);
 
-  if (!item) {
+  if (!item || !visibleTo(item, uid)) {
     res.status(404).json({ error: 'no such item' });
     return;
   }
@@ -164,37 +187,49 @@ router.patch('/items/:id', (req, res) => {
     item.onTile = req.body.onTile;
   }
 
+  if (req.body?.shared !== undefined) {
+    if (typeof req.body.shared !== 'boolean') {
+      res.status(400).json({ error: 'shared must be a boolean' });
+      return;
+    }
+    // Checking shared makes it household. Unchecking assigns it to the person
+    // who unchecked — everyone else loses the row.
+    item.ownerId = req.body.shared ? null : uid;
+  }
+
   save(file);
-  respond(file, res);
+  respond(file, res, uid);
 });
 
 router.delete('/items/:id', (req, res) => {
+  const uid = userId(req);
   const file = load();
-  const next = file.items.filter((item) => item.id !== req.params.id);
+  const item = file.items.find((candidate) => candidate.id === req.params.id);
 
-  if (next.length === file.items.length) {
+  if (!item || !visibleTo(item, uid)) {
     res.status(404).json({ error: 'no such item' });
     return;
   }
 
-  const updated = { items: next };
+  const updated = { items: file.items.filter((candidate) => candidate.id !== req.params.id) };
   save(updated);
-  respond(updated, res);
+  respond(updated, res, uid);
 });
 
 /** The whole point of the tool: record that you just did the thing. */
 router.post('/items/:id/tap', (req, res) => {
+  const uid = userId(req);
   const file = load();
   const item = file.items.find((candidate) => candidate.id === req.params.id);
 
-  if (!item) {
+  if (!item || !visibleTo(item, uid)) {
     res.status(404).json({ error: 'no such item' });
     return;
   }
 
   item.history.push(Date.now());
   save(file);
-  respond(file, res);
+  respond(file, res, uid);
 });
 
 /**
@@ -206,10 +241,11 @@ router.post('/items/:id/tap', (req, res) => {
  * hand-tuned past would quietly teach it a lie.
  */
 router.post('/items/:id/undo', (req, res) => {
+  const uid = userId(req);
   const file = load();
   const item = file.items.find((candidate) => candidate.id === req.params.id);
 
-  if (!item) {
+  if (!item || !visibleTo(item, uid)) {
     res.status(404).json({ error: 'no such item' });
     return;
   }
@@ -221,7 +257,7 @@ router.post('/items/:id/undo', (req, res) => {
   item.history.sort((a, b) => a - b);
   item.history.pop();
   save(file);
-  respond(file, res);
+  respond(file, res, uid);
 });
 
 const tool: ServerTool = { slug: 'lasttime', router };

@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { listDataFiles, readJson, writeJson } from '../../paths.js';
+import { listDataFiles, personal, readJson, writeJson } from '../../paths.js';
 import type { Entry } from '../../shared/calories.js';
 import { dayKeyFromMs, monthKey, shiftDayKey } from '../../shared/calories.js';
 
@@ -16,7 +16,9 @@ export { dayKeyFromMs as dayKeyFor, shiftDayKey };
  * later is a function here rather than a rescue operation.
  */
 
-const DIR = 'calories';
+function dir(): string {
+  return personal('calories');
+}
 const VERSION = 1;
 
 interface MonthFile {
@@ -24,7 +26,7 @@ interface MonthFile {
   entries: Entry[];
 }
 
-const fileFor = (month: string): string => `${DIR}/${month}.json`;
+const fileFor = (month: string): string => `${dir()}/${month}.json`;
 
 /**
  * Ids carry the day they belong to, so patching or deleting an entry knows
@@ -115,7 +117,7 @@ export function entriesForDay(dayKey: string): Entry[] {
 
 /** Newest first, across however many months it takes to find `limit`. */
 export function recentEntries(limit: number): Entry[] {
-  const months = listDataFiles(DIR)
+  const months = listDataFiles(dir())
     .filter((name) => name.endsWith('.json'))
     .map((name) => name.replace(/\.json$/, ''))
     .sort()
@@ -132,7 +134,7 @@ export function recentEntries(limit: number): Entry[] {
 
 /** Every named entry on disk, oldest first. Used by search and clustering. */
 export function allEntries(): Entry[] {
-  const months = listDataFiles(DIR)
+  const months = listDataFiles(dir())
     .filter((name) => name.endsWith('.json'))
     .map((name) => name.replace(/\.json$/, ''))
     .sort();
@@ -145,7 +147,7 @@ export function searchEntries(query: string, limit = 50): Entry[] {
   if (!needle) return [];
 
   const hits: Entry[] = [];
-  const months = listDataFiles(DIR)
+  const months = listDataFiles(dir())
     .filter((name) => name.endsWith('.json'))
     .map((name) => name.replace(/\.json$/, ''))
     .sort()

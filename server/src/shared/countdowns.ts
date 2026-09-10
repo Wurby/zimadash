@@ -21,18 +21,29 @@ export interface Countdown {
   date: string;
   /** Rolls to the same day next year once it passes. Birthdays, renewals. */
   yearly: boolean;
+  /**
+   * Who can see this row. `null` is household. A user id is private. Unchecking
+   * shared assigns ownership to whoever unchecked.
+   */
+  ownerId: string | null;
 }
 
 export interface CountdownsFile {
   items: Countdown[];
 }
 
-export interface CountdownView extends Countdown {
+export interface CountdownView {
+  id: string;
+  label: string;
+  date: string;
+  yearly: boolean;
   /** Whole days from today. Negative once a one-off has passed. */
   days: number;
   /** The date being counted to — next year's, for a rolled-over yearly. */
   target: string;
   passed: boolean;
+  /** Household row — both of you see it. */
+  shared: boolean;
 }
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -93,7 +104,16 @@ export function viewOf(item: Countdown, now: number): CountdownView {
   // the hour that a DST shift adds or removes.
   const days = Math.round((target.getTime() - today.getTime()) / DAY_MS);
 
-  return { ...item, days, target: formatDay(target), passed: days < 0 };
+  return {
+    id: item.id,
+    label: item.label,
+    date: item.date,
+    yearly: item.yearly,
+    days,
+    target: formatDay(target),
+    passed: days < 0,
+    shared: item.ownerId === null,
+  };
 }
 
 /** Soonest first; anything already past sinks to the bottom in the order it

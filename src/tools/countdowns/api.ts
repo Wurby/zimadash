@@ -13,10 +13,15 @@ export function getCountdowns(): Promise<CountdownList> {
   return api<CountdownList>(BASE)
 }
 
-export function addCountdown(label: string, date: string, yearly: boolean): Promise<CountdownList> {
+export function addCountdown(
+  label: string,
+  date: string,
+  yearly: boolean,
+  shared: boolean,
+): Promise<CountdownList> {
   return api<CountdownList>(`${BASE}/items`, {
     method: 'POST',
-    body: JSON.stringify({ label, date, yearly }),
+    body: JSON.stringify({ label, date, yearly, shared }),
   })
 }
 
@@ -24,6 +29,7 @@ export interface CountdownPatch {
   label?: string
   date?: string
   yearly?: boolean
+  shared?: boolean
 }
 
 export function patchCountdown(id: string, patch: CountdownPatch): Promise<CountdownList> {

@@ -99,11 +99,12 @@ than a 3-row tile at every unit size, so it still fits beside one; a third row p
 comparison — a phone sends the picker underneath on width alone whatever shape
 it is.
 
-The order is one list shared by every device, because dense packing already
-makes the same sequence fill a phone and a wall differently. Sizes are stored
-**per surface**: six columns is three quarters of a phone and barely a third of
-the wall, so a size chosen in your hand would be a postage stamp across the
-room. Setting one surface deliberately leaves the others alone.
+The order is one list per person, because dense packing already makes the same
+sequence fill a phone and a wall differently. Sizes are stored **per surface**:
+six columns is three quarters of a phone and barely a third of the wall, so a
+size chosen in your hand would be a postage stamp across the room. Setting one
+surface deliberately leaves the others alone. Each person's arrangement is
+theirs — a phone, a wall, and another phone do not share a layout.
 
 A tapped action swaps its icon for a checkmark for 5 seconds.
 
@@ -185,20 +186,27 @@ destroyed.
 All persistent state goes in `DATA_DIR` (`server/src/paths.ts`) — by default
 `~/zimadash-data`, outside the artifact, overridable with `ZIMADASH_DATA_DIR`.
 Use `readJson`/`writeJson` from `paths.ts`; they write atomically with `0600`.
-A real database will land here eventually (likely NoSQL) — the directory
-boundary exists so that migration is safe.
+Personal data (calories, trainer, layout) lives under `users/<id>/` via
+`personal()`; household data (scratch, weather, actions, inbox, shared last-time
+and countdown rows) stays at the root. A real database will land here eventually
+(likely NoSQL) — the directory boundary exists so that migration is safe.
 
 ## Auth
 
-One universal user, one PIN. There are no accounts and no roles. The PIN is set
-on first visit and persists; the login screen is a **single PIN field** — no
-confirm box, no username.
+The household is several PINs, not several named accounts. The login screen is
+still a **single PIN field** — no confirm box, no username. The PIN is what
+picks the person. The first PIN ever set is the owner; a logged-in person can
+add another PIN or change their own. Duplicate PINs are refused.
+
+Inbox is owner-only (tile, route, and API). Everything else a PIN can reach is
+either that person's data or household data.
 
 Read `server/src/auth.ts` for how it works. Rules that must hold:
 
 - The PIN is never stored in plaintext, and its record lives in `DATA_DIR` so a
   deploy cannot destroy it.
-- Everything under `/api` is gated except `/api/health` and `/api/auth/*`.
+- Everything under `/api` is gated except `/api/health`, `/api/auth/status`,
+  `/api/auth/setup`, and `/api/auth/login`.
 - **`/api/health` must stay unauthenticated** — `scripts/deploy.sh` curls it to
   verify a deploy and has no token.
 - This faces the public internet behind nothing but a PIN. Don't weaken the
@@ -259,12 +267,14 @@ The second tool to shell out to a model — also via `grok -p` — and the rules
 differ from the estimator's in ways that matter.
 
 **The equipment generates everything.** Every achievable load is a subset sum
-over the plates and dumbbells in `trainer/settings.json`. **Never write a weight
-down as a constant** — a literal ladder would look right today and silently
-freeze the first time a heavier pair arrives, which is the one thing this design
-exists to prevent. Ladders are **per implement**: a bar lift carries the bar's
-weight, the bench's leg attachment takes plates without it, dumbbell work
-depends on which pairs exist and how many hands are on them.
+over the plates and dumbbells in that user's trainer settings. **Never write a
+weight down as a constant** — a literal ladder would look right today and
+silently freeze the first time a heavier pair arrives, which is the one thing
+this design exists to prevent. Ladders are **per implement**: a bar lift carries
+the bar's weight, the bench's leg attachment takes plates without it, dumbbell
+work depends on which pairs exist and how many hands are on them. A new user
+starts with empty equipment and an empty catalogue; they add plates, then the
+brain invents movements from what can actually be loaded.
 
 **Zero is only a rung on a bodyweight ladder.** On a loaded implement it means
 "pick up nothing", which is not a lighter goblet squat — it isn't one at all.
@@ -289,8 +299,9 @@ past it to the last set actually performed.
 ladder, its last result, and the rule's computed suggestion already spelled out.
 It chooses exercises, formats and cueing. It gets **no tools at all** — an empty
 grant, stricter than the estimator, because unlike a meal description this needs
-nothing it isn't handed. An invented exercise name is a hard failure; a weight
-off the ladder is snapped.
+nothing it isn't handed. The catalogue informs repeats and constraints; it is
+not an allow-list. A new movement is saved into that user's catalogue (cue and
+note included) so it can repeat. A weight off the ladder is snapped.
 
 **Unlike the estimator, a fallback here is correct** — rotation plus the pool
 plus the adjustment table build a serviceable session on their own, so a dead
@@ -348,6 +359,10 @@ preference: swapping voices means removing the old one, or pinning with
 
 The third tool to shell out to a model — also via `grok -p` — and the first
 that writes outside `DATA_DIR`.
+
+**Owner only.** The tile, the route, and the API all refuse anyone who isn't
+the first PIN. It files into the owner's filesystem; a second person on the
+dash does not get a copy of that tree.
 
 **Drop a file, the brain files it.** No fixed destination list — the model is
 pointed at `ZIMADASH_INBOX_ROOT` (no fallback, no default in code; guessing at
@@ -491,7 +506,7 @@ src/
   lib/grid.ts         measured grid geometry — columns per surface, unit derived
   lib/layout.ts       the stored arrangement; lib/reorder.ts drives dragging
   auth/AuthGate.tsx   PIN unlock, wraps the app
-  components/         StatsTile, QuickActions, Icon, Meter
+  components/         StatsTile, QuickActions, Icon, Meter, AccountButton
   routes/             Home (the grid), ToolShell (back arrow), NotFound
   tools/types.ts      the tool contract
   tools/registry.ts   import.meta.glob auto-registration

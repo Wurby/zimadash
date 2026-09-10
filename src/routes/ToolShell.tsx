@@ -3,6 +3,7 @@ import { findTool } from '../tools/registry'
 import { usePwaManifest } from '../lib/pwa'
 import { Icon } from '../components/Icon'
 import { NotFound } from './NotFound'
+import { useSession } from '../auth/session'
 
 /**
  * The frame around every tool: a back arrow and a title, then the tool.
@@ -14,11 +15,13 @@ import { NotFound } from './NotFound'
  */
 export function ToolShell() {
   const { slug } = useParams()
+  const { owner } = useSession()
   const tool = findTool(slug)
 
   usePwaManifest(tool?.meta.slug ?? null, tool?.meta.shortName, tool?.meta.themeColor)
 
   if (!tool) return <NotFound />
+  if (tool.meta.slug === 'inbox' && !owner) return <NotFound />
 
   const { meta, View } = tool
 

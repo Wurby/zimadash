@@ -21,6 +21,14 @@ import { received, settle as settleEntry, dismiss, recent, incomingPath } from '
 
 const router = Router();
 
+router.use((req, res, next) => {
+  if (!req.user?.owner) {
+    res.status(403).json({ error: 'not available' });
+    return;
+  }
+  next();
+});
+
 // The Cloudflare Tunnel this box sits behind caps request bodies at 100MB on
 // the free plan. Staying comfortably under it means a rejection is always
 // ours -- a legible 413 -- rather than an opaque tunnel error.

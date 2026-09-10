@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { currentUser } from './context.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -25,6 +26,43 @@ export function ensureDataDir(): void {
 
 export function dataFile(name: string): string {
   return path.join(DATA_DIR, name);
+}
+
+/**
+ * A file that belongs to the signed-in user.
+ *
+ * Household state (scratch, weather, actions, the inbox log, Piper voices)
+ * stays at the DATA_DIR root. Anything personal — calories, trainer, layout —
+ * lives under `users/<id>/` so two PINs cannot read each other's records.
+ */
+export function personal(name: string): string {
+  return path.posix.join('users', currentUser().id, name);
+}
+
+/**
+ * Move the pre-user files into the first (owner) user's folder.
+ *
+ * Runs once: if the destination already exists we leave both sides alone,
+ * because a second pass would clobber a user who has already been using the
+ * new layout. Household files are not in this list.
+ */
+export function migratePersonalData(ownerId: string): void {
+  const prefix = path.join('users', ownerId);
+
+  moveIfExists('layout.json', path.join(prefix, 'layout.json'));
+  moveIfExists('calories', path.join(prefix, 'calories'));
+
+  for (const name of ['settings.json', 'sessions.json', 'guides.json']) {
+    moveIfExists(path.join('trainer', name), path.join(prefix, 'trainer', name));
+  }
+}
+
+function moveIfExists(from: string, to: string): void {
+  const src = dataFile(from);
+  const dest = dataFile(to);
+  if (!fs.existsSync(src) || fs.existsSync(dest)) return;
+  fs.mkdirSync(path.dirname(dest), { recursive: true, mode: 0o700 });
+  fs.renameSync(src, dest);
 }
 
 export function readJson<T>(name: string): T | null {

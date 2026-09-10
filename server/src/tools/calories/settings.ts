@@ -1,4 +1,4 @@
-import { readJson, writeJson } from '../../paths.js';
+import { personal, readJson, writeJson } from '../../paths.js';
 import { CORE_FIELDS, type FieldConfig, type Settings } from '../../shared/calories.js';
 
 /**
@@ -10,7 +10,9 @@ import { CORE_FIELDS, type FieldConfig, type Settings } from '../../shared/calor
  * to come back with.
  */
 
-const FILE = 'calories/settings.json';
+function file(): string {
+  return personal('calories/settings.json');
+}
 const VERSION = 1;
 
 /**
@@ -75,12 +77,12 @@ function migrate(raw: unknown): Settings {
 }
 
 export function readSettings(): Settings {
-  return migrate(readJson<Settings>(FILE));
+  return migrate(readJson<Settings>(file()));
 }
 
 export function writeSettings(settings: Settings): Settings {
   const safe = migrate(settings);
-  writeJson(FILE, safe);
+  writeJson(file(), safe);
   return safe;
 }
 

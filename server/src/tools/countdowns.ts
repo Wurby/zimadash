@@ -17,6 +17,9 @@ import {
  *
  * Owns one file in DATA_DIR and reaches into nothing else. `event-driven`: the
  * data only changes when you change it, and the day count is derived on read.
+ *
+ * Same sharing model as Last Time: household rows (`ownerId: null`) plus
+ * private ones. Unchecking shared hands ownership to whoever unchecked.
  */
 
 const FILE = 'tool-countdowns.json';
@@ -33,13 +36,28 @@ function load(): CountdownsFile {
       label: item.label,
       date: item.date,
       yearly: item.yearly ?? false,
-    })),
+      ownerId: item.ownerId === undefined ? undefined : item.ownerId,
+    })) as Countdown[],
   };
 }
 
-function respond(file: CountdownsFile, res: import('express').Response): void {
+function visibleTo(item: Countdown, userId: string): boolean {
+  return item.ownerId === null || item.ownerId === userId;
+}
+
+function userId(req: { user?: { id: string } }): string {
+  const id = req.user?.id;
+  if (!id) throw new Error('requireAuth did not run');
+  return id;
+}
+
+function respond(file: CountdownsFile, res: import('express').Response, uid: string): void {
   const now = Date.now();
-  res.json({ items: sortViews(file.items.map((item) => viewOf(item, now))) });
+  res.json({
+    items: sortViews(
+      file.items.filter((item) => visibleTo(item, uid)).map((item) => viewOf(item, now)),
+    ),
+  });
 }
 
 function cleanLabel(value: unknown): string | null {
@@ -49,14 +67,16 @@ function cleanLabel(value: unknown): string | null {
   return trimmed;
 }
 
-router.get('/', (_req, res) => {
-  respond(load(), res);
+router.get('/', (req, res) => {
+  respond(load(), res, userId(req));
 });
 
 router.post('/items', (req, res) => {
+  const uid = userId(req);
   const file = load();
+  const visible = file.items.filter((item) => visibleTo(item, uid));
 
-  if (file.items.length >= MAX_COUNTDOWNS) {
+  if (visible.length >= MAX_COUNTDOWNS) {
     res.status(409).json({ error: `at most ${MAX_COUNTDOWNS} countdowns` });
     return;
   }
@@ -78,18 +98,20 @@ router.post('/items', (req, res) => {
     label,
     date,
     yearly: req.body?.yearly === true,
+    ownerId: req.body?.shared === true ? null : uid,
   };
 
   file.items.push(item);
   writeJson(FILE, file);
-  respond(file, res);
+  respond(file, res, uid);
 });
 
 router.patch('/items/:id', (req, res) => {
+  const uid = userId(req);
   const file = load();
   const item = file.items.find((candidate) => candidate.id === req.params.id);
 
-  if (!item) {
+  if (!item || !visibleTo(item, uid)) {
     res.status(404).json({ error: 'no such countdown' });
     return;
   }
@@ -119,22 +141,31 @@ router.patch('/items/:id', (req, res) => {
     item.yearly = req.body.yearly;
   }
 
+  if (req.body?.shared !== undefined) {
+    if (typeof req.body.shared !== 'boolean') {
+      res.status(400).json({ error: 'shared must be a boolean' });
+      return;
+    }
+    item.ownerId = req.body.shared ? null : uid;
+  }
+
   writeJson(FILE, file);
-  respond(file, res);
+  respond(file, res, uid);
 });
 
 router.delete('/items/:id', (req, res) => {
+  const uid = userId(req);
   const file = load();
-  const next = file.items.filter((item) => item.id !== req.params.id);
+  const item = file.items.find((candidate) => candidate.id === req.params.id);
 
-  if (next.length === file.items.length) {
+  if (!item || !visibleTo(item, uid)) {
     res.status(404).json({ error: 'no such countdown' });
     return;
   }
 
-  const updated = { items: next };
+  const updated = { items: file.items.filter((candidate) => candidate.id !== req.params.id) };
   writeJson(FILE, updated);
-  respond(updated, res);
+  respond(updated, res, uid);
 });
 
 const tool: ServerTool = { slug: 'countdowns', router };

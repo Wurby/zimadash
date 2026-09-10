@@ -1,4 +1,4 @@
-import { readJson, writeJson } from '../../paths.js';
+import { personal, readJson, writeJson } from '../../paths.js';
 import type { WeightReading } from '../../shared/calories.js';
 
 /**
@@ -10,7 +10,9 @@ import type { WeightReading } from '../../shared/calories.js';
  * trend wants the whole run anyway, not a month of it.
  */
 
-const FILE = 'calories/weight.json';
+function weightFile(): string {
+  return personal('calories/weight.json');
+}
 const VERSION = 1;
 
 interface WeightFile {
@@ -25,7 +27,7 @@ function migrate(raw: unknown): WeightFile {
 }
 
 function read(): WeightFile {
-  return migrate(readJson<WeightFile>(FILE));
+  return migrate(readJson<WeightFile>(weightFile()));
 }
 
 export function allReadings(): WeightReading[] {
@@ -38,13 +40,13 @@ export function putReading(date: string, lb: number): WeightReading[] {
   file.readings = [...file.readings.filter((r) => r.date !== date), { date, lb }].sort((a, b) =>
     a.date.localeCompare(b.date),
   );
-  writeJson(FILE, file);
+  writeJson(weightFile(), file);
   return file.readings;
 }
 
 export function deleteReading(date: string): WeightReading[] {
   const file = read();
   file.readings = file.readings.filter((reading) => reading.date !== date);
-  writeJson(FILE, file);
+  writeJson(weightFile(), file);
   return file.readings;
 }

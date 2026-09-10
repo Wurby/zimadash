@@ -8,6 +8,7 @@ import {
   setToken,
   SESSION_EXPIRED_EVENT,
 } from '../lib/api'
+import { SessionContext, type Session } from './session'
 
 type Phase = 'checking' | 'unreachable' | 'setup' | 'login' | 'authed'
 
@@ -52,6 +53,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [pin, setPin] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [session, setSession] = useState<Session | null>(null)
 
   // Without a token we have to ask the server whether a PIN exists yet, to know
   // if this is a first-ever visit or a normal unlock.
@@ -78,6 +80,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     function onExpired() {
       setPin('')
+      setSession(null)
       setError('your session ended — enter your PIN')
       // Back to 'checking', not straight to 'login' — the server is the
       // authority on which screen this should be.
@@ -131,7 +134,13 @@ export function AuthGate({ children }: { children: ReactNode }) {
     if (phase === 'login' && known !== null && value.length === known) void attempt(value)
   }
 
-  if (phase === 'authed') return <>{children}</>
+  if (phase === 'authed') {
+    return (
+      <Authed session={session} onSession={setSession}>
+        {children}
+      </Authed>
+    )
+  }
 
   if (phase === 'checking') {
     return (
@@ -178,8 +187,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
         <h1 className="text-xl font-semibold tracking-tight">zimadash</h1>
         <p className="text-ink-dim mt-1 text-sm">{isSetup ? 'Choose a PIN.' : 'Enter your PIN.'}</p>
 
-        {/* There is only ever one user, but password managers and screen
-            readers expect a username field alongside a password field. */}
+        {/* Password managers and screen readers expect a username field
+            alongside a password field. The PIN itself picks the user. */}
         <input
           type="text"
           name="username"
@@ -218,4 +227,63 @@ export function AuthGate({ children }: { children: ReactNode }) {
       </form>
     </div>
   )
+}
+
+function Authed({
+  session,
+  onSession,
+  children,
+}: {
+  session: Session | null
+  onSession: (session: Session) => void
+  children: ReactNode
+}) {
+  const [failed, setFailed] = useState(false)
+  const [attempt, setAttempt] = useState(0)
+
+  useEffect(() => {
+    if (session) return
+    let cancelled = false
+    api<{ owner: boolean }>('/api/auth/me')
+      .then((me) => {
+        if (!cancelled) onSession({ owner: me.owner })
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [session, onSession, attempt])
+
+  if (failed) {
+    return (
+      <div className="flex min-h-dvh items-start justify-center px-6 pt-16 pb-6 sm:items-center sm:pt-6">
+        <div className="border-line bg-surface w-full max-w-sm border p-6 text-center shadow-sm sm:p-8">
+          <h1 className="text-xl font-semibold tracking-tight">zimadash</h1>
+          <p className="text-ink-dim mt-2 text-sm">Can't reach the dashboard server.</p>
+          <button
+            type="button"
+            onClick={() => {
+              setFailed(false)
+              setAttempt((n) => n + 1)
+            }}
+            className="bg-accent mt-6 w-full px-4 py-2.5 font-medium text-slate-50 transition-opacity dark:text-slate-900 hover:opacity-90"
+          >
+            Try again
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (!session) {
+    return (
+      <div className="grid min-h-dvh place-items-center">
+        <p className="text-ink-dim text-sm">loading…</p>
+      </div>
+    )
+  }
+
+  return <SessionContext.Provider value={session}>{children}</SessionContext.Provider>
 }

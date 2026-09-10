@@ -1,4 +1,6 @@
-import { readJson, writeJson } from '../../paths.js';
+import { personal, readJson, writeJson } from '../../paths.js';
+import { listUsers } from '../../auth.js';
+import { runAs } from '../../context.js';
 import type { Entry } from '../../shared/calories.js';
 import { complete } from './brain.js';
 import { allEntries } from './storage.js';
@@ -12,7 +14,9 @@ import { allEntries } from './storage.js';
  * the always-on process — not on view — and Today reads the cache.
  */
 
-const FILE = 'calories/clusters.json';
+function file(): string {
+  return personal('calories/clusters.json');
+}
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const CHIP_MAX = 12;
 const CLUSTER_TIMEOUT_MS = 180_000;
@@ -152,7 +156,7 @@ async function rebuild(): Promise<ClusterCache> {
 
   if (names.length === 0) {
     const empty: ClusterCache = { version: 1, at: Date.now(), chips: [] };
-    writeJson(FILE, empty);
+    writeJson(file(), empty);
     return empty;
   }
 
@@ -185,14 +189,14 @@ async function rebuild(): Promise<ClusterCache> {
   }));
 
   const cache: ClusterCache = { version: 1, at: Date.now(), chips };
-  writeJson(FILE, cache);
+  writeJson(file(), cache);
   return cache;
 }
 
 function loadCache(): ClusterCache | null {
-  const file = readJson<ClusterCache>(FILE);
-  if (!file || !Array.isArray(file.chips) || typeof file.at !== 'number') return null;
-  return file;
+  const stored = readJson<ClusterCache>(file());
+  if (!stored || !Array.isArray(stored.chips) || typeof stored.at !== 'number') return null;
+  return stored;
 }
 
 /** Cached chips, or null when the weekly pass has not succeeded yet. */
@@ -211,8 +215,14 @@ async function tick(): Promise<void> {
   }
 }
 
+async function tickAll(): Promise<void> {
+  for (const user of listUsers()) {
+    await runAs(user, () => tick());
+  }
+}
+
 /** Kick a pass if the cache is stale, then again every week. Never on a view. */
 export function startClusterLoop(): void {
-  void tick();
-  setInterval(() => void tick(), WEEK_MS);
+  void tickAll();
+  setInterval(() => void tickAll(), WEEK_MS);
 }

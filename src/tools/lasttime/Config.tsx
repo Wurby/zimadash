@@ -70,6 +70,18 @@ function Row({
         >
           <input
             type="checkbox"
+            checked={item.shared}
+            onChange={(event) => void onPatch({ shared: event.target.checked })}
+            className="accent-accent size-5"
+          />
+          shared
+        </label>
+
+        <label
+          className={`text-ink-dim ${TOUCH} flex shrink-0 cursor-pointer items-center gap-1.5 px-1 text-xs`}
+        >
+          <input
+            type="checkbox"
             checked={item.onTile}
             onChange={(event) => void onPatch({ onTile: event.target.checked })}
             className="accent-accent size-5"
@@ -187,6 +199,7 @@ export function Config() {
   const list = usePolled('event-driven', getItems)
   const [label, setLabel] = useState('')
   const [days, setDays] = useState(String(DEFAULT_INTERVAL_DAYS))
+  const [shared, setShared] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -209,9 +222,10 @@ export function Config() {
 
     setSaving(true)
     await run(async () => {
-      await addItem(trimmed, Number(days) || DEFAULT_INTERVAL_DAYS)
+      await addItem(trimmed, Number(days) || DEFAULT_INTERVAL_DAYS, shared)
       setLabel('')
       setDays(String(DEFAULT_INTERVAL_DAYS))
+      setShared(false)
     })
     setSaving(false)
   }
@@ -222,7 +236,9 @@ export function Config() {
         <h2 className="text-sm font-semibold tracking-tight">Add something</h2>
         <p className="text-ink-dim mt-1 text-xs">
           The interval is only a starting guess. Once there are a few taps to go on, it swaps to
-          what you actually do — pin it if you'd rather it held still.
+          what you actually do — pin it if you'd rather it held still. Shared items are household:
+          either of you tapping means it was done. Unchecking shared keeps the row for you and hides
+          it from everyone else.
         </p>
 
         <form onSubmit={create} className="mt-3 flex flex-wrap items-end gap-2">
@@ -254,6 +270,18 @@ export function Config() {
               onChange={(event) => setDays(event.target.value)}
               className={`border-line focus:border-accent ${TOUCH} mt-1 w-20 border bg-transparent px-2 text-center font-mono text-sm outline-none`}
             />
+          </label>
+
+          <label
+            className={`text-ink-dim ${TOUCH} mt-1 flex cursor-pointer items-center gap-1.5 px-1 text-xs`}
+          >
+            <input
+              type="checkbox"
+              checked={shared}
+              onChange={(event) => setShared(event.target.checked)}
+              className="accent-accent size-5"
+            />
+            shared
           </label>
 
           <button

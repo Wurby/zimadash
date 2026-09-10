@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { dataFile, readJson, writeJson } from '../../paths.js';
+import { dataFile, personal, readJson, writeJson } from '../../paths.js';
+import { currentUser, runAs } from '../../context.js';
 import type { QueuedMeal, QueueSource } from '../../shared/calories.js';
 import { complete, estimateMeal, serialise, writePhotoJob } from './brain.js';
 import { trackedFields } from './settings.js';
@@ -20,19 +21,40 @@ import { addEntry, dayKeyFor } from './storage.js';
  * reply, or that watchdog) becomes an empty slot.
  */
 
-const FILE = 'calories/queue.json';
-const INCOMING = 'calories/incoming';
+function queueFile(): string {
+  return personal('calories/queue.json');
+}
+
+function incomingDir(): string {
+  return personal('calories/incoming');
+}
+
 /** Grok's own [toolset.ask_user_question] timeout_secs default. */
 const WATCHDOG_MS = 1_800_000;
 
-let items: QueuedMeal[] = readJson<QueuedMeal[]>(FILE) ?? [];
+const queues = new Map<string, QueuedMeal[]>();
+const adjustJobs = new Map<string, number>();
+const lastAdjustError = new Map<string, string | null>();
+
+function itemsOf(): QueuedMeal[] {
+  const id = currentUser().id;
+  if (!queues.has(id)) {
+    queues.set(id, readJson<QueuedMeal[]>(queueFile()) ?? []);
+  }
+  return queues.get(id)!;
+}
+
+function setItems(next: QueuedMeal[]): void {
+  queues.set(currentUser().id, next);
+  persist();
+}
 
 function persist(): void {
-  writeJson(FILE, items);
+  writeJson(queueFile(), itemsOf());
 }
 
 function photoPath(id: string): string {
-  return dataFile(path.join(INCOMING, `${id}.json`));
+  return dataFile(path.join(incomingDir(), `${id}.json`));
 }
 
 function totalsOf(meals: QueuedMeal[]): Record<string, number> {
@@ -47,11 +69,13 @@ function totalsOf(meals: QueuedMeal[]): Record<string, number> {
 }
 
 export function allItems(): QueuedMeal[] {
-  return items;
+  return itemsOf();
 }
 
 export function itemsForDay(day: string): QueuedMeal[] {
-  return items.filter((item) => item.day === day).sort((a, b) => a.at - b.at);
+  return itemsOf()
+    .filter((item) => item.day === day)
+    .sort((a, b) => a.at - b.at);
 }
 
 export function pendingTotalsFor(day: string): Record<string, number> {
@@ -60,7 +84,7 @@ export function pendingTotalsFor(day: string): Record<string, number> {
 
 /** Oldest day that still has queue items. Null if the pile is empty. */
 export function oldestQueuedDay(): string | null {
-  const days = [...new Set(items.map((item) => item.day))].sort();
+  const days = [...new Set(itemsOf().map((item) => item.day))].sort();
   return days[0] ?? null;
 }
 
@@ -79,30 +103,30 @@ export function loggingSuspended(today: string): boolean {
   return oldest !== null && oldest < today;
 }
 
-let adjustJobs = 0;
-let lastAdjustError: string | null = null;
-
 export function isAdjusting(): boolean {
-  return adjustJobs > 0;
+  return (adjustJobs.get(currentUser().id) ?? 0) > 0;
 }
 
 export function adjustError(): string | null {
-  return lastAdjustError;
+  return lastAdjustError.get(currentUser().id) ?? null;
 }
 
 /** Fire-and-forget. New captures can join the pile while this runs. */
 export function queueAdjust(day: string, feedback: string): { error?: string } {
   const ready = itemsForDay(day).filter((item) => item.status === 'ready');
   if (ready.length === 0) return { error: 'nothing to adjust yet' };
-  lastAdjustError = null;
-  adjustJobs += 1;
-  void adjustDay(day, feedback)
-    .then((result) => {
-      if (result.error) lastAdjustError = result.error;
-    })
-    .finally(() => {
-      adjustJobs -= 1;
-    });
+  const user = currentUser();
+  lastAdjustError.set(user.id, null);
+  adjustJobs.set(user.id, (adjustJobs.get(user.id) ?? 0) + 1);
+  void runAs(user, () =>
+    adjustDay(day, feedback)
+      .then((result) => {
+        if (result.error) lastAdjustError.set(user.id, result.error);
+      })
+      .finally(() => {
+        adjustJobs.set(user.id, Math.max(0, (adjustJobs.get(user.id) ?? 1) - 1));
+      }),
+  );
   return {};
 }
 
@@ -126,9 +150,13 @@ function enqueue(
     assumptions: '',
     reason: null,
   };
-  items = [...items, item];
-  persist();
+  setItems([...itemsOf(), item]);
   return item;
+}
+
+function spawn(id: string): void {
+  const user = currentUser();
+  void runAs(user, () => processItem(id));
 }
 
 export function queueDirect(description: string, values: Record<string, number>): QueuedMeal {
@@ -137,28 +165,27 @@ export function queueDirect(description: string, values: Record<string, number>)
 
 export function queueText(description: string): QueuedMeal {
   const item = enqueue('text', description, {}, 'working');
-  void processItem(item.id);
+  spawn(item.id);
   return item;
 }
 
 export function queuePhoto(base64: string): QueuedMeal {
   const item = enqueue('photo', 'photograph', {}, 'working');
   writePhotoJob(base64, photoPath(item.id), ['Meal: the photograph.']);
-  void processItem(item.id);
+  spawn(item.id);
   return item;
 }
 
 export function dropItem(id: string): boolean {
-  const item = items.find((candidate) => candidate.id === id);
+  const item = itemsOf().find((candidate) => candidate.id === id);
   if (!item || item.status === 'working') return false;
-  items = items.filter((candidate) => candidate.id !== id);
+  setItems(itemsOf().filter((candidate) => candidate.id !== id));
   fs.rmSync(photoPath(id), { force: true });
-  persist();
   return true;
 }
 
 export function fillItem(id: string, description?: string, base64?: string): QueuedMeal | null {
-  const item = items.find((candidate) => candidate.id === id);
+  const item = itemsOf().find((candidate) => candidate.id === id);
   if (!item || item.status === 'working') return null;
 
   if (base64) {
@@ -182,12 +209,14 @@ export function fillItem(id: string, description?: string, base64?: string): Que
   }
 
   persist();
-  void processItem(id);
+  spawn(id);
   return item;
 }
 
 export function approveDay(day: string): { ok: true } | { error: string } {
-  if (adjustJobs > 0) return { error: 'an adjustment is still running' };
+  if ((adjustJobs.get(currentUser().id) ?? 0) > 0) {
+    return { error: 'an adjustment is still running' };
+  }
   const dayItems = itemsForDay(day);
   if (dayItems.length === 0) return { error: 'nothing to approve' };
   if (dayItems.some((item) => item.status !== 'ready')) {
@@ -203,13 +232,12 @@ export function approveDay(day: string): { ok: true } | { error: string } {
     });
     fs.rmSync(photoPath(item.id), { force: true });
   }
-  items = items.filter((item) => item.day !== day);
-  persist();
+  setItems(itemsOf().filter((item) => item.day !== day));
   return { ok: true };
 }
 
 async function processItem(id: string): Promise<void> {
-  const item = items.find((candidate) => candidate.id === id);
+  const item = itemsOf().find((candidate) => candidate.id === id);
   if (!item || item.status !== 'working') return;
 
   try {
@@ -224,7 +252,7 @@ async function processItem(id: string): Promise<void> {
       item.source === 'photo' ? ['Meal: the photograph.'] : [`Meal: ${item.description}`];
     const parsed = await estimateMeal(transcript, promptFile, WATCHDOG_MS);
 
-    const current = items.find((candidate) => candidate.id === id);
+    const current = itemsOf().find((candidate) => candidate.id === id);
     if (!current) return;
     current.status = 'ready';
     current.description = parsed.name || current.description;
@@ -234,7 +262,7 @@ async function processItem(id: string): Promise<void> {
     fs.rmSync(photoPath(id), { force: true });
     persist();
   } catch (err) {
-    const current = items.find((candidate) => candidate.id === id);
+    const current = itemsOf().find((candidate) => candidate.id === id);
     if (!current) return;
     current.status = 'empty';
     current.values = {};
@@ -313,7 +341,7 @@ and must be a plain number.`;
   for (const raw of body.changes as Record<string, unknown>[]) {
     const id = typeof raw.id === 'string' ? raw.id : '';
     if (!known.has(id)) continue;
-    const item = items.find((candidate) => candidate.id === id);
+    const item = itemsOf().find((candidate) => candidate.id === id);
     if (!item || item.status !== 'ready') continue;
 
     if (typeof raw.description === 'string' && raw.description.trim()) {
@@ -345,7 +373,7 @@ and must be a plain number.`;
 
 /** Resume anything still working after a restart — the bytes are on disk. */
 export function resumeWorking(): void {
-  for (const item of items) {
-    if (item.status === 'working') void processItem(item.id);
+  for (const item of itemsOf()) {
+    if (item.status === 'working') spawn(item.id);
   }
 }

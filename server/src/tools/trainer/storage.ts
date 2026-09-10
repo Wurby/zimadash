@@ -1,4 +1,4 @@
-import { readJson, writeJson } from '../../paths.js';
+import { personal, readJson, writeJson } from '../../paths.js';
 import type { Session } from '../../shared/trainer.js';
 
 /**
@@ -10,20 +10,22 @@ import type { Session } from '../../shared/trainer.js';
  * matter, partition it then and not before.
  */
 
-const FILE = 'trainer/sessions.json';
+function file(): string {
+  return personal('trainer/sessions.json');
+}
 
 interface SessionsFile {
   sessions: Session[];
 }
 
 export function allSessions(): Session[] {
-  const file = readJson<SessionsFile>(FILE);
-  if (!file || !Array.isArray(file.sessions)) return [];
-  return [...file.sessions].sort((a, b) => a.date.localeCompare(b.date));
+  const stored = readJson<SessionsFile>(file());
+  if (!stored || !Array.isArray(stored.sessions)) return [];
+  return [...stored.sessions].sort((a, b) => a.date.localeCompare(b.date));
 }
 
 export function writeSessions(sessions: Session[]): void {
-  writeJson(FILE, { sessions: [...sessions].sort((a, b) => a.date.localeCompare(b.date)) });
+  writeJson(file(), { sessions: [...sessions].sort((a, b) => a.date.localeCompare(b.date)) });
 }
 
 export function findSession(id: string): Session | null {

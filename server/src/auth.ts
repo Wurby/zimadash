@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
-import { currentBuildId, readJson, writeJson } from './paths.js';
+import { currentBuildId, migratePersonalData, readJson, writeJson } from './paths.js';
+import { runAs, type AuthUser } from './context.js';
 
 const PIN_FILE = 'auth.json';
 const SESSION_FILE = 'session.json';
@@ -13,7 +14,20 @@ const MAX_PIN_LENGTH = 64;
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MS = 15 * 60 * 1000;
 
-interface PinRecord {
+interface UserRecord {
+  id: string;
+  salt: string;
+  hash: string;
+  createdAt: number;
+  owner: boolean;
+}
+
+interface AuthFile {
+  users: UserRecord[];
+}
+
+/** The original single-PIN file, before users were a list. */
+interface LegacyPinRecord {
   salt: string;
   hash: string;
   createdAt: number;
@@ -24,31 +38,74 @@ interface SessionRecord {
   secret: string;
 }
 
+declare module 'express-serve-static-core' {
+  interface Request {
+    user?: AuthUser;
+  }
+}
+
 // ─── PIN storage ─────────────────────────────────────────────────────────────
 
 function hashPin(pin: string, salt: string): string {
   return crypto.scryptSync(pin.normalize('NFKC'), salt, 64).toString('hex');
 }
 
-export function isPinConfigured(): boolean {
-  return readJson<PinRecord>(PIN_FILE) !== null;
+function matchesPin(pin: string, user: UserRecord): boolean {
+  const candidate = Buffer.from(hashPin(pin, user.salt), 'hex');
+  const expected = Buffer.from(user.hash, 'hex');
+  return candidate.length === expected.length && crypto.timingSafeEqual(candidate, expected);
 }
 
-export function setPin(pin: string): void {
+function readAuth(): AuthFile {
+  const raw = readJson<AuthFile | LegacyPinRecord>(PIN_FILE);
+  if (!raw || typeof raw !== 'object') return { users: [] };
+  if ('users' in raw && Array.isArray(raw.users)) {
+    return { users: raw.users.filter((user) => user && typeof user.id === 'string') };
+  }
+  return { users: [] };
+}
+
+function writeAuth(file: AuthFile): void {
+  writeJson(PIN_FILE, file);
+}
+
+export function listUsers(): AuthUser[] {
+  return readAuth().users.map((user) => ({ id: user.id, owner: user.owner === true }));
+}
+
+export function isPinConfigured(): boolean {
+  return readAuth().users.length > 0;
+}
+
+function ownerId(): string | null {
+  return readAuth().users.find((user) => user.owner)?.id ?? null;
+}
+
+function userById(id: string): UserRecord | null {
+  return readAuth().users.find((user) => user.id === id) ?? null;
+}
+
+function findUserByPin(pin: string): UserRecord | null {
+  let matched: UserRecord | null = null;
+  for (const user of readAuth().users) {
+    if (matchesPin(pin, user) && !matched) matched = user;
+  }
+  return matched;
+}
+
+function pinTaken(pin: string, exceptId?: string): boolean {
+  return readAuth().users.some((user) => user.id !== exceptId && matchesPin(pin, user));
+}
+
+function makeUser(pin: string, owner: boolean): UserRecord {
   const salt = crypto.randomBytes(16).toString('hex');
-  writeJson(PIN_FILE, {
+  return {
+    id: crypto.randomUUID(),
     salt,
     hash: hashPin(pin, salt),
     createdAt: Date.now(),
-  } satisfies PinRecord);
-}
-
-function verifyPin(pin: string): boolean {
-  const record = readJson<PinRecord>(PIN_FILE);
-  if (!record) return false;
-  const candidate = Buffer.from(hashPin(pin, record.salt), 'hex');
-  const expected = Buffer.from(record.hash, 'hex');
-  return candidate.length === expected.length && crypto.timingSafeEqual(candidate, expected);
+    owner,
+  };
 }
 
 export function validatePinShape(pin: unknown): string | null {
@@ -56,6 +113,60 @@ export function validatePinShape(pin: unknown): string | null {
   if (pin.length < MIN_PIN_LENGTH) return `pin must be at least ${MIN_PIN_LENGTH} characters`;
   if (pin.length > MAX_PIN_LENGTH) return `pin must be at most ${MAX_PIN_LENGTH} characters`;
   return null;
+}
+
+/**
+ * Lift a single-PIN `auth.json` into a users list, then move that owner's
+ * personal files under `users/<id>/`. Safe to call on every boot.
+ */
+export function migrateAuth(): void {
+  const raw = readJson<AuthFile | LegacyPinRecord>(PIN_FILE);
+  if (!raw || typeof raw !== 'object') return;
+
+  if (!('users' in raw) && 'hash' in raw && 'salt' in raw) {
+    const legacy = raw as LegacyPinRecord;
+    writeAuth({
+      users: [
+        {
+          id: crypto.randomUUID(),
+          salt: legacy.salt,
+          hash: legacy.hash,
+          createdAt: legacy.createdAt,
+          owner: true,
+        },
+      ],
+    });
+  }
+
+  const owner = ownerId();
+  if (owner) migratePersonalData(owner);
+
+  migrateSharedOwnership(owner);
+}
+
+/**
+ * Last Time and Countdowns stay household files. Existing rows had no owner,
+ * which now means "shared" — they were the first user's private list, so they
+ * become theirs until they check shared.
+ */
+function migrateSharedOwnership(owner: string | null): void {
+  if (!owner) return;
+
+  function stamp<T extends { ownerId?: string | null }>(name: string): void {
+    const file = readJson<{ items: T[] }>(name);
+    if (!file || !Array.isArray(file.items)) return;
+    let changed = false;
+    for (const item of file.items) {
+      if (item.ownerId === undefined) {
+        item.ownerId = owner;
+        changed = true;
+      }
+    }
+    if (changed) writeJson(name, file);
+  }
+
+  stamp('tool-lasttime.json');
+  stamp('tool-countdowns.json');
 }
 
 // ─── Session secret ──────────────────────────────────────────────────────────
@@ -91,17 +202,31 @@ function sign(payload: string): string {
   return crypto.createHmac('sha256', sessionSecret).update(payload).digest('base64url');
 }
 
-export function issueToken(): string {
-  const payload = Buffer.from(JSON.stringify({ iat: Date.now() })).toString('base64url');
+export function issueToken(userId: string): string {
+  const payload = Buffer.from(JSON.stringify({ iat: Date.now(), uid: userId })).toString(
+    'base64url',
+  );
   return `${payload}.${sign(payload)}`;
 }
 
-function isTokenValid(token: string): boolean {
+function userFromToken(token: string): AuthUser | null {
   const [payload, signature] = token.split('.');
-  if (!payload || !signature) return false;
+  if (!payload || !signature) return null;
   const expected = Buffer.from(sign(payload));
   const actual = Buffer.from(signature);
-  return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+  if (actual.length !== expected.length || !crypto.timingSafeEqual(actual, expected)) return null;
+
+  let uid: unknown;
+  try {
+    uid = (JSON.parse(Buffer.from(payload, 'base64url').toString()) as { uid?: unknown }).uid;
+  } catch {
+    return null;
+  }
+  if (typeof uid !== 'string') return null;
+
+  const user = userById(uid);
+  if (!user) return null;
+  return { id: user.id, owner: user.owner === true };
 }
 
 // ─── Throttling ──────────────────────────────────────────────────────────────
@@ -192,7 +317,7 @@ export function handleStatus(_req: Request, res: Response): void {
   res.json({ configured: isPinConfigured() });
 }
 
-/** Unauthenticated, but only usable once: sets the PIN on first ever visit. */
+/** Unauthenticated, but only usable once: sets the first PIN, who becomes owner. */
 export function handleSetup(req: Request, res: Response): void {
   if (isPinConfigured()) {
     res.status(409).json({ error: 'a pin is already set' });
@@ -203,8 +328,9 @@ export function handleSetup(req: Request, res: Response): void {
     res.status(400).json({ error: problem });
     return;
   }
-  setPin(req.body.pin);
-  res.json({ token: issueToken() });
+  const owner = makeUser(req.body.pin, true);
+  writeAuth({ users: [owner] });
+  res.json({ token: issueToken(owner.id) });
 }
 
 export async function handleLogin(req: Request, res: Response): Promise<void> {
@@ -233,7 +359,8 @@ export async function handleLogin(req: Request, res: Response): Promise<void> {
     const wait = delayFor(failures);
     if (wait > 0) await sleep(wait);
 
-    if (typeof req.body?.pin !== 'string' || !verifyPin(req.body.pin)) {
+    const user = typeof req.body?.pin === 'string' ? findUserByPin(req.body.pin) : null;
+    if (!user) {
       recordFailure(key);
       writeFailures(failures + 1);
       res.status(401).json({ error: 'incorrect pin' });
@@ -244,7 +371,7 @@ export async function handleLogin(req: Request, res: Response): Promise<void> {
     // attacker's backoff for more than a single attempt.
     attempts.delete(key);
     writeFailures(0);
-    res.json({ token: issueToken() });
+    res.json({ token: issueToken(user.id) });
   } catch {
     res.status(500).json({ error: 'login failed' });
   } finally {
@@ -252,14 +379,69 @@ export async function handleLogin(req: Request, res: Response): Promise<void> {
   }
 }
 
+/** Who this token is. Used to hide owner-only tiles. */
+export function handleMe(req: Request, res: Response): void {
+  res.json({ owner: req.user?.owner === true });
+}
+
+/** Logged-in: add another person by setting their PIN. */
+export function handleAddUser(req: Request, res: Response): void {
+  const problem = validatePinShape(req.body?.pin);
+  if (problem) {
+    res.status(400).json({ error: problem });
+    return;
+  }
+  if (pinTaken(req.body.pin)) {
+    res.status(409).json({ error: 'that pin is already in use' });
+    return;
+  }
+  const file = readAuth();
+  file.users.push(makeUser(req.body.pin, false));
+  writeAuth(file);
+  res.json({ ok: true });
+}
+
+/** Logged-in: replace this person's PIN. */
+export function handleChangePin(req: Request, res: Response): void {
+  const userId = req.user?.id;
+  if (!userId) {
+    res.status(401).json({ error: 'unauthorized' });
+    return;
+  }
+  const problem = validatePinShape(req.body?.pin);
+  if (problem) {
+    res.status(400).json({ error: problem });
+    return;
+  }
+  if (pinTaken(req.body.pin, userId)) {
+    res.status(409).json({ error: 'that pin is already in use' });
+    return;
+  }
+
+  const file = readAuth();
+  const user = file.users.find((candidate) => candidate.id === userId);
+  if (!user) {
+    res.status(401).json({ error: 'unauthorized' });
+    return;
+  }
+  const next = makeUser(req.body.pin, user.owner);
+  user.salt = next.salt;
+  user.hash = next.hash;
+  writeAuth(file);
+  res.json({ ok: true });
+}
+
 /** Gate for everything else under /api. */
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
   const header = req.headers.authorization;
   const token = header?.startsWith('Bearer ') ? header.slice(7) : null;
+  const user = token ? userFromToken(token) : null;
 
-  if (!token || !isTokenValid(token)) {
+  if (!user) {
     res.status(401).json({ error: 'unauthorized' });
     return;
   }
-  next();
+
+  req.user = user;
+  runAs(user, () => next());
 }

@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import type { ServerTool } from '../registry.js';
+import { listUsers } from '../../auth.js';
+import { runAs } from '../../context.js';
 import type { DaySummary, Entry, LogGrain, LogSummary, Settings } from '../../shared/calories.js';
 import {
   RANGE_DAYS,
@@ -573,8 +575,12 @@ router.delete('/entries/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-resumeWorking();
-startClusterLoop();
+export function startCalories(): void {
+  for (const user of listUsers()) {
+    runAs(user, () => resumeWorking());
+  }
+  startClusterLoop();
+}
 
 const tool: ServerTool = { slug: 'calories', router };
 export default tool;
