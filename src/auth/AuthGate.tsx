@@ -78,10 +78,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }, [phase])
 
   useEffect(() => {
-    function onExpired() {
+    function onExpired(event: Event) {
       setPin('')
       setSession(null)
-      setError('your session ended — enter your PIN')
+      const silent = event instanceof CustomEvent && event.detail?.silent === true
+      setError(silent ? null : 'your session ended — enter your PIN')
       // Back to 'checking', not straight to 'login' — the server is the
       // authority on which screen this should be.
       setPhase('checking')

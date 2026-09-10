@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import { api, setPinLength } from '../lib/api'
+import { api, setPinLength, signOut } from '../lib/api'
 import { Icon } from './Icon'
 
 /**
- * Change this PIN, or add someone else's. Lives on the grid with the theme
- * toggle — there is no header to hang it off, and a tool is the wrong place
- * for house chrome.
+ * Change this PIN, add someone else's, or leave this device. Lives on the
+ * grid with the theme toggle — there is no header to hang it off, and a tool
+ * is the wrong place for house chrome.
  */
 
 const TOUCH = 'min-h-11'
@@ -67,7 +67,7 @@ export function AccountButton() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label="Account: change PIN or add a user"
+        aria-label="Account: change PIN, add a user, or log out"
         className="border-line bg-surface hover:border-accent grid h-full w-full place-items-center border transition-colors"
       >
         <Icon name="user" />
@@ -145,6 +145,14 @@ export function AccountButton() {
                 {error}
               </p>
             )}
+
+            <button
+              type="button"
+              onClick={() => signOut()}
+              className={`border-line hover:border-accent mt-8 w-full border px-4 py-2.5 text-sm transition-colors ${TOUCH}`}
+            >
+              Log out
+            </button>
           </div>
         </div>
       )}

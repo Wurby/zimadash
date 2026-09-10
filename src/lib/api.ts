@@ -56,6 +56,21 @@ export function setPinLength(length: number): void {
   }
 }
 
+/**
+ * Drop this device's session and the remembered PIN length, then bounce to
+ * the unlock screen. Length is cleared so auto-submit doesn't fire at the
+ * previous person's PIN length.
+ */
+export function signOut(): void {
+  clearToken()
+  try {
+    localStorage.removeItem(PIN_LENGTH_KEY)
+  } catch {
+    /* nothing to clear */
+  }
+  window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT, { detail: { silent: true } }))
+}
+
 /** Login, setup and status are allowed to 401 without killing a session. */
 function isPublicAuth(path: string): boolean {
   return path === '/api/auth/status' || path === '/api/auth/setup' || path === '/api/auth/login'
