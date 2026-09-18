@@ -72,13 +72,24 @@ export function findEntry(id: string): Entry | null {
 }
 
 export function patchEntry(id: string, values: Record<string, number>): Entry | null {
+  return updateEntry(id, { values });
+}
+
+export function updateEntry(
+  id: string,
+  patch: { values?: Record<string, number>; description?: string; assumptions?: string },
+): Entry | null {
   const month = monthOfId(id);
   const file = readMonth(month);
   const entry = file.entries.find((candidate) => candidate.id === id);
   if (!entry) return null;
 
-  entry.values = values;
-  entry.edited = true;
+  if (patch.values) {
+    entry.values = patch.values;
+    entry.edited = true;
+  }
+  if (patch.description !== undefined) entry.description = patch.description;
+  if (patch.assumptions !== undefined) entry.assumptions = patch.assumptions;
   writeMonth(month, file);
   return entry;
 }

@@ -15,7 +15,6 @@ function weeklyFields(fields: FieldConfig[]): FieldConfig[] {
 
 export function WeekProgress({
   totals,
-  pendingTotals,
   fields,
   today,
   tdee,
@@ -25,7 +24,6 @@ export function WeekProgress({
   compact = false,
 }: {
   totals: Record<string, number>
-  pendingTotals?: Record<string, number>
   fields: FieldConfig[]
   today: string
   tdee: number | null
@@ -37,7 +35,7 @@ export function WeekProgress({
 }) {
   const calorieGoal = fields.find((field) => field.id === 'calories')?.goal ?? null
   const weeklyGoal = calorieGoal !== null ? calorieGoal * 7 : null
-  const eaten = Math.round((totals.calories ?? 0) + (pendingTotals?.calories ?? 0))
+  const eaten = Math.round(totals.calories ?? 0)
   const remaining = weeklyGoal !== null ? weeklyGoal - eaten : null
   const daysLeft = daysBetween(today, endOfWeek(today)) + 1
   const pace = remaining !== null && daysLeft > 0 ? Math.round(remaining / daysLeft) : null
@@ -79,7 +77,7 @@ export function WeekProgress({
       <p className="text-ink-dim mb-2 text-[0.65rem] font-medium tracking-wide uppercase">
         This week
       </p>
-      <CaloriesBar totals={totals} fields={weeklyFields(fields)} pendingTotals={pendingTotals} />
+      <CaloriesBar totals={totals} fields={weeklyFields(fields)} />
 
       <div className="mt-3 space-y-1">
         {remaining !== null && (

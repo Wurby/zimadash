@@ -206,12 +206,12 @@ photograph, correcting a logged meal by describing what was wrong rather than
 retyping numbers, a macro-derived calorie figure offered as a suggestion, and
 re-logging of recent meals.
 
-**Queued capture.** Every log (photo, text, number, Again) hits a review pile
-on the server and returns immediately. Grok fills items in the background (30
-minute watchdog; a hang stays working). Today is where you review: pending
-totals are visually distinct, one adjustment box, Approve the day. An
-unreviewed past day blocks logging and every tab except Weight. The tile shows
-calendar today plus a review flag.
+**Queued capture.** Photo and text hit a server queue and return immediately;
+Grok fills them in the background (30 minute watchdog; a hang stays working)
+and they write to the log when the numbers land. A number or an Again chip
+logs at once. One adjustment box rewrites whichever logged meal the sentence
+refers to. A failed estimate stays an empty slot you fill with another photo
+or sentence.
 
 **The Log tab.** Lands on today. Breadcrumbs zoom day → week → month → year
 with one calendar (year is twelve months; month and week are days). Week shows

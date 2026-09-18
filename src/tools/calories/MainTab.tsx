@@ -1,8 +1,7 @@
 import { useRef, useState } from 'react'
 import {
   dayKeyFromMs,
-  endOfWeek,
-  startOfWeek,
+  type Entry,
   type FieldConfig,
   type QueuedMeal,
   type Settings,
@@ -12,7 +11,7 @@ import { usePolled } from '../../lib/refresh'
 import { shrink } from './photo'
 import {
   adjustQueued,
-  approveDay,
+  deleteEntry,
   dropQueued,
   fillQueued,
   getLogView,
@@ -33,9 +32,9 @@ import { buildPoints, rollingMean } from './points'
 import { WeekProgress } from './WeekProgress'
 
 /**
- * Capture is fire-and-forget. The brain runs on the server; this tab only
- * shows the queue. Approve the day (or adjust it) before the next day starts,
- * or logging locks until you do.
+ * Capture is fire-and-forget. The brain runs on the server; numbers land in
+ * the log when they are ready. One sentence in the adjust box rewrites
+ * whichever meal it refers to.
  */
 
 const isBareNumber = (text: string): boolean => /^\d+(\.\d+)?$/.test(text.trim())
@@ -79,16 +78,6 @@ function Totals({ totals, fields }: { totals: Record<string, number>; fields: Fi
       })}
     </div>
   )
-}
-
-function headingFor(day: string, today: string): string {
-  if (day === today) return 'Today'
-  const [y, m, d] = day.split('-').map(Number)
-  return new Date(y, m - 1, d).toLocaleDateString([], {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  })
 }
 
 function QueueRow({
@@ -223,6 +212,73 @@ function QueueRow({
   )
 }
 
+function EntryRow({
+  entry,
+  fields,
+  busy,
+  onChanged,
+}: {
+  entry: Entry
+  fields: FieldConfig[]
+  busy: boolean
+  onChanged: () => void
+}) {
+  const [dropping, setDropping] = useState(false)
+  const kcal = Math.round(entry.values.calories ?? 0)
+
+  async function drop() {
+    await deleteEntry(entry.id)
+    onChanged()
+  }
+
+  return (
+    <li className="px-1 py-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="min-w-0 truncate text-sm font-medium">
+          {entry.description || <span className="text-ink-dim italic">quick entry</span>}
+        </p>
+        <span className="text-ink-dim shrink-0 font-mono text-xs tabular-nums">+{kcal}</span>
+      </div>
+
+      {entry.assumptions && <p className="text-ink-dim mt-1 text-xs italic">{entry.assumptions}</p>}
+
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+        {fields.map((field) =>
+          entry.values[field.id] === undefined ? null : (
+            <span key={field.id} className="flex items-center gap-1.5">
+              <span
+                aria-hidden="true"
+                className="size-2 shrink-0"
+                style={{ background: field.color }}
+              />
+              <span className="text-ink-dim text-[0.65rem] tracking-wide uppercase">
+                {field.label}
+              </span>
+              <span className="font-mono text-xs tabular-nums">
+                {Math.round(entry.values[field.id])}
+              </span>
+            </span>
+          ),
+        )}
+      </div>
+
+      <div className="mt-2 flex justify-end">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => (dropping ? void drop() : setDropping(true))}
+          onBlur={() => setDropping(false)}
+          className={`min-h-11 border px-3 text-xs disabled:opacity-50 ${
+            dropping ? 'border-danger text-danger' : 'border-line hover:border-danger'
+          }`}
+        >
+          {dropping ? 'Tap again to drop' : 'Drop'}
+        </button>
+      </div>
+    </li>
+  )
+}
+
 export function MainTab({ settings }: { settings: Settings | null }) {
   const weight = usePolled('event-driven', getWeight)
   const fields = withEffectiveGoal(
@@ -239,7 +295,6 @@ export function MainTab({ settings }: { settings: Settings | null }) {
   const [text, setText] = useState('')
   const [adjust, setAdjust] = useState('')
   const [capturing, setCapturing] = useState(false)
-  const [approving, setApproving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const input = useRef<HTMLInputElement>(null)
   const photoInput = useRef<HTMLInputElement>(null)
@@ -311,79 +366,34 @@ export function MainTab({ settings }: { settings: Settings | null }) {
     }
   }
 
-  async function approve() {
-    if (review.status !== 'ok') return
-    setApproving(true)
-    setError(null)
-    try {
-      await approveDay(review.data.day)
-      refreshAll()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'could not approve')
-    } finally {
-      setApproving(false)
-    }
-  }
-
   const rest = fields.filter((field) => field.id !== 'calories')
   const data = review.status === 'ok' ? review.data : null
-  const suspended = Boolean(data?.suspended)
   const items = data?.items ?? []
-  const draftingAdjust = adjust.trim().length > 0
-  const canApprove =
-    items.length > 0 &&
-    items.every((item) => item.status === 'ready') &&
-    !data?.adjusting &&
-    !draftingAdjust
+  const entries = data?.entries ?? []
 
   return (
     <div className="space-y-5">
-      <CaloriesBar
-        totals={data?.totals ?? {}}
-        fields={fields}
-        pendingTotals={data?.pendingTotals}
-      />
+      <CaloriesBar totals={data?.totals ?? {}} fields={fields} />
 
       {week.status === 'ok' && fields.length > 0 && (
         <WeekProgress
           totals={week.data.totals}
-          pendingTotals={
-            data && data.day >= startOfWeek(todayKey) && data.day <= endOfWeek(todayKey)
-              ? data.pendingTotals
-              : undefined
-          }
           fields={fields}
           today={todayKey}
           tdee={weight.status === 'ok' ? weight.data.expenditure.tdee : null}
           rateLbPerWeek={settings?.weight.rateLbPerWeek ?? 1}
-          daysLogged={
-            week.data.summary.daysLogged +
-            (data &&
-            (data.pendingTotals.calories ?? 0) > 0 &&
-            data.day >= startOfWeek(todayKey) &&
-            data.day <= endOfWeek(todayKey) &&
-            !week.data.loggedDays.includes(data.day)
-              ? 1
-              : 0)
-          }
+          daysLogged={week.data.summary.daysLogged}
           atGoal={weight.status === 'ok' ? weight.data.expenditure.atGoal : false}
           compact
         />
       )}
 
-      {settings?.weight.onMain && weight.status === 'ok' && !suspended && (
+      {settings?.weight.onMain && weight.status === 'ok' && (
         <WeightBar
           settings={settings.weight}
           expenditure={weight.data.expenditure}
           startLb={weight.data.trend[0]?.lb ?? null}
         />
-      )}
-
-      {suspended && data && (
-        <p className="text-accent text-sm">
-          Review {headingFor(data.day, data.today)} first. You can still add meals to that day.
-          Weight is available.
-        </p>
       )}
 
       <form onSubmit={submit}>
@@ -434,10 +444,10 @@ export function MainTab({ settings }: { settings: Settings | null }) {
       {review.status === 'loading' && <p className="text-ink-dim text-sm">loading…</p>}
       {review.status === 'error' && <p className="text-danger text-sm">{review.message}</p>}
 
-      {data && items.length > 0 && (
+      {items.length > 0 && (
         <div>
           <p className="text-ink-dim mb-2 text-[0.65rem] font-medium tracking-wide uppercase">
-            {headingFor(data.day, data.today)} · review
+            In flight
           </p>
           <ul className="divide-line divide-y">
             {items.map((item) => (
@@ -445,7 +455,26 @@ export function MainTab({ settings }: { settings: Settings | null }) {
                 key={item.id}
                 item={item}
                 fields={fields}
-                busy={approving}
+                busy={capturing}
+                onChanged={refreshAll}
+              />
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {entries.length > 0 && (
+        <div>
+          <p className="text-ink-dim mb-2 text-[0.65rem] font-medium tracking-wide uppercase">
+            Today · {entries.length} meal{entries.length === 1 ? '' : 's'}
+          </p>
+          <ul className="divide-line divide-y">
+            {entries.map((entry) => (
+              <EntryRow
+                key={entry.id}
+                entry={entry}
+                fields={fields}
+                busy={Boolean(data?.adjusting)}
                 onChanged={refreshAll}
               />
             ))}
@@ -456,42 +485,27 @@ export function MainTab({ settings }: { settings: Settings | null }) {
               value={adjust}
               onChange={(event) => setAdjust(event.target.value)}
               onKeyDown={(event) => event.key === 'Enter' && void sendAdjust()}
-              disabled={items.every((item) => item.status !== 'ready')}
+              disabled={Boolean(data?.adjusting)}
               placeholder="Adjust the day in one sentence…"
               className="border-line focus:border-accent w-full border bg-transparent px-3 py-2 text-sm outline-none disabled:opacity-50"
             />
-            {data.adjusting && (
+            {data?.adjusting && (
               <p className="text-ink-dim font-mono text-xs">applying the adjustment…</p>
             )}
-            {data.adjustError && <p className="text-danger text-xs">{data.adjustError}</p>}
-            <button
-              type="button"
-              onClick={approve}
-              disabled={approving || !canApprove}
-              className="bg-accent min-h-11 w-full px-4 text-sm font-medium text-slate-50 disabled:opacity-50 dark:text-slate-900"
-            >
-              {draftingAdjust
-                ? 'Send your change first'
-                : canApprove
-                  ? 'Approve the day'
-                  : 'Waiting for every item to have numbers'}
-            </button>
+            {data?.adjustError && <p className="text-danger text-xs">{data.adjustError}</p>}
           </div>
         </div>
       )}
 
       <div>
         <p className="text-ink-dim mb-2 text-[0.65rem] font-medium tracking-wide uppercase">
-          {data ? headingFor(data.day, data.today) : 'Today'}
-          {data
-            ? ` · ${data.entries.length + items.filter((i) => i.status === 'ready').length} meals`
-            : ''}
+          Today
+          {entries.length > 0 ? ` · ${entries.length} meals` : ''}
         </p>
         <Totals totals={data?.totals ?? {}} fields={rest} />
       </div>
 
       {promoted.status === 'ok' &&
-        !suspended &&
         fields
           .filter((field) => field.onMain)
           .map((field) => {

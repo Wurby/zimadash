@@ -114,11 +114,9 @@ export const getRecent = () => api<{ meals: RecentMeal[] }>(`${BASE}/recent`)
 export interface ReviewState {
   today: string
   day: string
-  suspended: boolean
   items: QueuedMeal[]
   entries: Entry[]
   totals: Record<string, number>
-  pendingTotals: Record<string, number>
   adjusting: boolean
   adjustError: string | null
 }
@@ -150,15 +148,9 @@ export const fillQueued = (id: string, body: { description?: string; image?: str
   })
 
 export const adjustQueued = (day: string, feedback: string) =>
-  api<{ ok: true; items: QueuedMeal[] }>(`${BASE}/queue/adjust`, {
+  api<{ ok: true }>(`${BASE}/queue/adjust`, {
     method: 'POST',
     body: JSON.stringify({ day, feedback }),
-  })
-
-export const approveDay = (day: string) =>
-  api<{ ok: true }>(`${BASE}/queue/approve`, {
-    method: 'POST',
-    body: JSON.stringify({ day }),
   })
 
 export const startEstimate = (description: string) =>

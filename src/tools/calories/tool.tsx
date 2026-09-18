@@ -16,7 +16,8 @@ import { WeightBar } from './WeightBar'
  * Calories — what you ate, and what it cost.
  *
  * Estimates come from Grok Build (`grok -p`) on the box. Capture queues on the
- * server so the phone can lock; Today is the review.
+ * server so the phone can lock; numbers land in the log when the brain
+ * finishes. Adjust the day in one sentence if something is wrong.
  */
 
 const TABS = ['Today', 'Weight', 'Reports', 'Log', 'Settings'] as const
@@ -43,13 +44,7 @@ function Tile() {
 
   return (
     <div className="flex h-full flex-col">
-      <CaloriesBar
-        totals={day.data.totals}
-        fields={fields}
-        compact
-        pendingTotals={day.data.pendingTotals}
-        review={Boolean(day.data.unreviewedDay)}
-      />
+      <CaloriesBar totals={day.data.totals} fields={fields} compact />
 
       {rest.length > 0 && (
         <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-0.5">
@@ -102,11 +97,8 @@ function View() {
   const [tab, setTab] = useState<Tab>('Today')
   const [logDate, setLogDate] = useState<string | null>(null)
   const loaded = usePolled('event-driven', getSettings)
-  const day = usePolled('ambient', getDay)
   const [override, setOverride] = useState<Settings | null>(null)
   const settings = override ?? (loaded.status === 'ok' ? loaded.data : null)
-  const locked = day.status === 'ok' && Boolean(day.data.unreviewedDay)
-  const shown: Tab = locked && tab !== 'Weight' ? 'Today' : tab
 
   function openTab(name: Tab) {
     if (name === 'Log' && tab !== 'Log') setLogDate(null)
@@ -121,37 +113,31 @@ function View() {
   return (
     <div>
       <nav className="border-line flex gap-1 border-b" aria-label="Calories sections">
-        {TABS.map((name) => {
-          const blocked = locked && name !== 'Today' && name !== 'Weight'
-          return (
-            <button
-              key={name}
-              type="button"
-              onClick={() => !blocked && openTab(name)}
-              disabled={blocked}
-              aria-current={shown === name ? 'page' : undefined}
-              className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
-                shown === name
-                  ? 'border-accent text-accent'
-                  : blocked
-                    ? 'border-transparent text-ink-dim opacity-40'
-                    : 'hover:text-ink border-transparent text-ink-dim'
-              }`}
-            >
-              {name}
-            </button>
-          )
-        })}
+        {TABS.map((name) => (
+          <button
+            key={name}
+            type="button"
+            onClick={() => openTab(name)}
+            aria-current={tab === name ? 'page' : undefined}
+            className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+              tab === name
+                ? 'border-accent text-accent'
+                : 'hover:text-ink border-transparent text-ink-dim'
+            }`}
+          >
+            {name}
+          </button>
+        ))}
       </nav>
 
       <div className="mt-6">
-        {shown === 'Today' && <MainTab settings={settings} />}
-        {shown === 'Weight' && <WeightTab settings={settings} onSaved={setOverride} />}
-        {shown === 'Reports' && <ReportsTab settings={settings} onOpenDay={openLogDay} />}
-        {shown === 'Log' && (
+        {tab === 'Today' && <MainTab settings={settings} />}
+        {tab === 'Weight' && <WeightTab settings={settings} onSaved={setOverride} />}
+        {tab === 'Reports' && <ReportsTab settings={settings} onOpenDay={openLogDay} />}
+        {tab === 'Log' && (
           <LogTab key={logDate ?? 'today'} settings={settings} openDate={logDate} />
         )}
-        {shown === 'Settings' && <SettingsTab settings={settings} onSaved={setOverride} />}
+        {tab === 'Settings' && <SettingsTab settings={settings} onSaved={setOverride} />}
       </div>
     </div>
   )

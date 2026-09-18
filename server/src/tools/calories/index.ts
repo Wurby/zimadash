@@ -39,19 +39,15 @@ import {
 import { cachedChips, startClusterLoop } from './clusters.js';
 import {
   adjustError,
-  approveDay,
   dropItem,
   fillItem,
   isAdjusting,
   itemsForDay,
-  loggingSuspended,
-  pendingTotalsFor,
   queueAdjust,
   queueDirect,
   queuePhoto,
   queueText,
   resumeWorking,
-  reviewDay,
 } from './queue.js';
 
 /**
@@ -126,29 +122,22 @@ router.put('/settings', (req, res) => {
 router.get('/day', (_req, res) => {
   const date = dayKeyFor(Date.now());
   const entries = entriesForDay(date);
-  const oldest = reviewDay(date);
   res.json({
     date,
     totals: totalsFor(entries),
-    pendingTotals: pendingTotalsFor(date),
     entries,
-    unreviewedDay: oldest < date ? oldest : null,
   } satisfies DaySummary);
 });
 
 router.get('/review', (_req, res) => {
   const today = dayKeyFor(Date.now());
-  const day = reviewDay(today);
-  const entries = entriesForDay(day);
-  const items = itemsForDay(day);
+  const entries = entriesForDay(today);
   res.json({
     today,
-    day,
-    suspended: loggingSuspended(today),
-    items,
+    day: today,
+    items: itemsForDay(today),
     entries,
     totals: totalsFor(entries),
-    pendingTotals: pendingTotalsFor(day),
     adjusting: isAdjusting(),
     adjustError: adjustError(),
   });
@@ -195,7 +184,7 @@ router.post('/queue/direct', (req, res) => {
     res.status(400).json({ error: 'nothing to log' });
     return;
   }
-  res.status(202).json(queueDirect(description, clean));
+  res.json(queueDirect(description, clean));
 });
 
 router.delete('/queue/:id', (req, res) => {
@@ -225,24 +214,13 @@ router.post('/queue/adjust', (req, res) => {
     return;
   }
   const today = dayKeyFor(Date.now());
-  const day = typeof req.body?.day === 'string' ? req.body.day : reviewDay(today);
+  const day = typeof req.body?.day === 'string' ? req.body.day : today;
   const result = queueAdjust(day, feedback);
   if (result.error) {
     res.status(409).json({ error: result.error });
     return;
   }
   res.status(202).json({ ok: true });
-});
-
-router.post('/queue/approve', (req, res) => {
-  const today = dayKeyFor(Date.now());
-  const day = typeof req.body?.day === 'string' ? req.body.day : reviewDay(today);
-  const result = approveDay(day);
-  if ('error' in result) {
-    res.status(409).json({ error: result.error });
-    return;
-  }
-  res.json({ ok: true });
 });
 
 function rangeWindow(

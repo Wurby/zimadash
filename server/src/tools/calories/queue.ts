@@ -6,10 +6,13 @@ import { currentUser, runAs } from '../../context.js';
 import type { QueuedMeal, QueueSource } from '../../shared/calories.js';
 import { complete, estimateMeal, serialise, writePhotoJob } from './brain.js';
 import { trackedFields } from './settings.js';
-import { addEntry, dayKeyFor } from './storage.js';
+import { addEntry, dayKeyFor, entriesForDay, updateEntry } from './storage.js';
+import type { Entry } from '../../shared/calories.js';
 
 /**
- * The review pile. Captures land here and Grok fills them in off the request.
+ * In-flight captures. Photo and text land here; Grok fills them in off the
+ * request, then they are written to the log. A number or an Again chip skips
+ * this and logs immediately.
  *
  * Same bargain as the inbox: bytes (or the typed meal) hit DATA_DIR before a
  * 202 goes back, so locking the phone cannot lose the capture. The HTTP
@@ -57,17 +60,6 @@ function photoPath(id: string): string {
   return dataFile(path.join(incomingDir(), `${id}.json`));
 }
 
-function totalsOf(meals: QueuedMeal[]): Record<string, number> {
-  const totals: Record<string, number> = {};
-  for (const meal of meals) {
-    if (meal.status !== 'ready') continue;
-    for (const [field, value] of Object.entries(meal.values)) {
-      totals[field] = Math.round(((totals[field] ?? 0) + value) * 10) / 10;
-    }
-  }
-  return totals;
-}
-
 export function allItems(): QueuedMeal[] {
   return itemsOf();
 }
@@ -76,31 +68,6 @@ export function itemsForDay(day: string): QueuedMeal[] {
   return itemsOf()
     .filter((item) => item.day === day)
     .sort((a, b) => a.at - b.at);
-}
-
-export function pendingTotalsFor(day: string): Record<string, number> {
-  return totalsOf(itemsForDay(day));
-}
-
-/** Oldest day that still has queue items. Null if the pile is empty. */
-export function oldestQueuedDay(): string | null {
-  const days = [...new Set(itemsOf().map((item) => item.day))].sort();
-  return days[0] ?? null;
-}
-
-/**
- * Calendar today if the pile is empty or only today has items; otherwise the
- * oldest unreviewed day — that's the review the Today tab is forced onto.
- */
-export function reviewDay(today: string): string {
-  const oldest = oldestQueuedDay();
-  if (oldest && oldest < today) return oldest;
-  return today;
-}
-
-export function loggingSuspended(today: string): boolean {
-  const oldest = oldestQueuedDay();
-  return oldest !== null && oldest < today;
 }
 
 export function isAdjusting(): boolean {
@@ -113,8 +80,7 @@ export function adjustError(): string | null {
 
 /** Fire-and-forget. New captures can join the pile while this runs. */
 export function queueAdjust(day: string, feedback: string): { error?: string } {
-  const ready = itemsForDay(day).filter((item) => item.status === 'ready');
-  if (ready.length === 0) return { error: 'nothing to adjust yet' };
+  if (entriesForDay(day).length === 0) return { error: 'nothing to adjust yet' };
   const user = currentUser();
   lastAdjustError.set(user.id, null);
   adjustJobs.set(user.id, (adjustJobs.get(user.id) ?? 0) + 1);
@@ -139,9 +105,7 @@ function enqueue(
   const today = dayKeyFor(Date.now());
   const item: QueuedMeal = {
     id: randomUUID(),
-    // Land on the day under review, not always calendar today — so a photo
-    // taken while yesterday is still open joins yesterday's pile.
-    day: reviewDay(today),
+    day: today,
     at: Date.now(),
     source,
     status,
@@ -159,8 +123,8 @@ function spawn(id: string): void {
   void runAs(user, () => processItem(id));
 }
 
-export function queueDirect(description: string, values: Record<string, number>): QueuedMeal {
-  return enqueue('direct', description, values, 'ready');
+export function queueDirect(description: string, values: Record<string, number>): Entry {
+  return addEntry({ at: Date.now(), description, values });
 }
 
 export function queueText(description: string): QueuedMeal {
@@ -213,27 +177,15 @@ export function fillItem(id: string, description?: string, base64?: string): Que
   return item;
 }
 
-export function approveDay(day: string): { ok: true } | { error: string } {
-  if ((adjustJobs.get(currentUser().id) ?? 0) > 0) {
-    return { error: 'an adjustment is still running' };
-  }
-  const dayItems = itemsForDay(day);
-  if (dayItems.length === 0) return { error: 'nothing to approve' };
-  if (dayItems.some((item) => item.status !== 'ready')) {
-    return { error: 'every item needs numbers before the day can be approved' };
-  }
-
-  for (const item of dayItems) {
-    addEntry({
-      at: item.at,
-      description: item.description,
-      values: item.values,
-      assumptions: item.assumptions || undefined,
-    });
-    fs.rmSync(photoPath(item.id), { force: true });
-  }
-  setItems(itemsOf().filter((item) => item.day !== day));
-  return { ok: true };
+function commitItem(item: QueuedMeal): void {
+  addEntry({
+    at: item.at,
+    description: item.description,
+    values: item.values,
+    assumptions: item.assumptions || undefined,
+  });
+  fs.rmSync(photoPath(item.id), { force: true });
+  setItems(itemsOf().filter((candidate) => candidate.id !== item.id));
 }
 
 async function processItem(id: string): Promise<void> {
@@ -242,8 +194,7 @@ async function processItem(id: string): Promise<void> {
 
   try {
     if (item.source === 'direct') {
-      item.status = 'ready';
-      persist();
+      commitItem(item);
       return;
     }
 
@@ -254,13 +205,11 @@ async function processItem(id: string): Promise<void> {
 
     const current = itemsOf().find((candidate) => candidate.id === id);
     if (!current) return;
-    current.status = 'ready';
     current.description = parsed.name || current.description;
     current.values = parsed.values;
     current.assumptions = parsed.assumptions;
     current.reason = null;
-    fs.rmSync(photoPath(id), { force: true });
-    persist();
+    commitItem(current);
   } catch (err) {
     const current = itemsOf().find((candidate) => candidate.id === id);
     if (!current) return;
@@ -272,7 +221,7 @@ async function processItem(id: string): Promise<void> {
 }
 
 export async function adjustDay(day: string, feedback: string): Promise<{ error?: string }> {
-  const dayItems = itemsForDay(day).filter((item) => item.status === 'ready');
+  const dayItems = entriesForDay(day);
   if (dayItems.length === 0) return { error: 'nothing to adjust yet' };
 
   const fields = trackedFields();
@@ -290,11 +239,11 @@ export async function adjustDay(day: string, feedback: string): Promise<{ error?
     })
     .join('\n');
 
-  const prompt = `You adjust queued meals for one day of a calorie log.
+  const prompt = `You adjust logged meals for one day of a calorie log.
 
 The person said: "${feedback}"
 
-These are the meals, already estimated:
+These are the meals:
 
 ${listed}
 
@@ -341,14 +290,14 @@ and must be a plain number.`;
   for (const raw of body.changes as Record<string, unknown>[]) {
     const id = typeof raw.id === 'string' ? raw.id : '';
     if (!known.has(id)) continue;
-    const item = itemsOf().find((candidate) => candidate.id === id);
-    if (!item || item.status !== 'ready') continue;
 
+    const patch: { description?: string; assumptions?: string; values?: Record<string, number> } =
+      {};
     if (typeof raw.description === 'string' && raw.description.trim()) {
-      item.description = raw.description.trim().slice(0, 80);
+      patch.description = raw.description.trim().slice(0, 80);
     }
     if (typeof raw.assumptions === 'string') {
-      item.assumptions = raw.assumptions.trim();
+      patch.assumptions = raw.assumptions.trim();
     }
     const incoming = raw.values as Record<string, unknown> | undefined;
     if (incoming && typeof incoming === 'object') {
@@ -363,17 +312,21 @@ and must be a plain number.`;
         }
         values[fieldId] = Math.round(value * 10) / 10;
       }
-      if (ok) item.values = values;
+      if (ok) patch.values = values;
+    }
+    if (patch.values || patch.description !== undefined || patch.assumptions !== undefined) {
+      updateEntry(id, patch);
     }
   }
 
-  persist();
   return {};
 }
 
-/** Resume anything still working after a restart — the bytes are on disk. */
+/** Resume anything still working after a restart — the bytes are on disk.
+ *  Leftover `ready` items from the old review pile are written to the log. */
 export function resumeWorking(): void {
-  for (const item of itemsOf()) {
-    if (item.status === 'working') spawn(item.id);
+  for (const item of [...itemsOf()]) {
+    if (item.status === 'ready') commitItem(item);
+    else if (item.status === 'working') spawn(item.id);
   }
 }

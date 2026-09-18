@@ -105,7 +105,7 @@ export interface PendingEstimate {
 export type QueueStatus = 'working' | 'ready' | 'empty';
 export type QueueSource = 'photo' | 'text' | 'direct';
 
-/** A captured meal waiting on the review pile. Survives a phone lock. */
+/** A capture still in flight: the brain is working, or it failed and needs another photo or sentence. */
 export interface QueuedMeal {
   id: string;
   /** 4am-rollover day this capture belongs to. */
@@ -124,14 +124,7 @@ export interface DaySummary {
   /** The 4am-rollover day this covers, as YYYY-MM-DD. */
   date: string;
   totals: Record<string, number>;
-  /** Ready queue items for this calendar day, not yet approved. */
-  pendingTotals: Record<string, number>;
   entries: Entry[];
-  /**
-   * Oldest captured day that still has queue items, if that day is before
-   * calendar today. The tile uses it as a flag; Today uses it as the review.
-   */
-  unreviewedDay: string | null;
 }
 
 // ─── Weight and the adaptive target ──────────────────────────────────────────

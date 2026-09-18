@@ -227,16 +227,10 @@ The calorie tracker shells out to Grok Build (`grok -p`) installed on the box,
 so it runs on a subscription that already exists rather than a metered API key.
 Capture is fire-and-forget: the phone queues the meal (photo, text, a number,
 or an Again chip) and can lock as soon as the server has the bytes. The brain
-runs in the background. Today is the review — pending numbers sit on the bar,
-visually distinct, and do not become log entries until you **Approve the day**.
-One adjustment box lets Grok rewrite whichever meal the sentence refers to;
-that runs in the background too, so you can still queue more meals while it
-processes.
-
-If the clock rolls over with a pile still open, Today _is_ that unreviewed day
-until you Approve. Logging, Reports, Log and Settings are off; Weight stays on.
-The homepage tile always shows calendar today, plus a review flag if a past day
-is still open.
+runs in the background. A number or an Again chip writes to the log immediately;
+a photo or a sentence writes when the estimate lands. One adjustment box lets
+Grok rewrite whichever logged meal the sentence refers to; that runs in the
+background too, so you can still queue more meals while it processes.
 
 Two rules:
 
@@ -250,7 +244,7 @@ Two rules:
   URL, which search results do not.
 - **A photograph is staged in `DATA_DIR` until the brain has read it**, then
   deleted. Same reason as the inbox: the upload _is_ the payload and has to
-  survive a dead brain or a reboot mid-job. What is approved later is the
+  survive a dead brain or a reboot mid-job. What lands in the log is the
   model's name and numbers. The HTTP request never waits on Grok; the only
   watchdog is 30 minutes (Grok's own default answer timeout). A hang stays
   `working`. A real failure (auth, crash, unparseable reply, or that watchdog)

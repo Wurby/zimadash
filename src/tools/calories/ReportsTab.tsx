@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import type { Expenditure, FieldConfig, RangeKey, Settings } from '@shared/calories'
-import { RANGE_LABELS, dayKeyFromMs, startOfWeek } from '@shared/calories'
+import { RANGE_LABELS, dayKeyFromMs } from '@shared/calories'
 import { usePolled } from '../../lib/refresh'
-import { getDay, getLogView, getRange, getWeight, tracked, withEffectiveGoal } from './api'
+import { getLogView, getRange, getWeight, tracked, withEffectiveGoal } from './api'
 import { Chart } from './Chart'
 import { LoggedGrid } from './LoggedGrid'
 import { composition } from './macros'
@@ -272,33 +272,21 @@ export function ReportsTab({
   const [today] = useState(() => dayKeyFromMs(Date.now()))
   const weight = usePolled('event-driven', getWeight)
   const week = usePolled('event-driven', () => getLogView('week', today))
-  const day = usePolled('ambient', getDay)
   const expenditure: Expenditure | null = weight.status === 'ok' ? weight.data.expenditure : null
   const fields = withEffectiveGoal(tracked(settings), settings, expenditure)
   const calorieGoal = fields.find((field) => field.id === 'calories')?.goal ?? null
   const protein = fields.find((field) => field.id === 'protein' && field.tracked)
-
-  const pending =
-    day.status === 'ok' && day.data.date >= startOfWeek(today) ? day.data.pendingTotals : undefined
-  const extraPendingDay =
-    pending &&
-    (pending.calories ?? 0) > 0 &&
-    week.status === 'ok' &&
-    !week.data.loggedDays.includes(today)
-      ? 1
-      : 0
 
   return (
     <div className="space-y-5">
       {week.status === 'ok' && fields.length > 0 && (
         <WeekProgress
           totals={week.data.totals}
-          pendingTotals={pending}
           fields={fields}
           today={today}
           tdee={expenditure?.tdee ?? null}
           rateLbPerWeek={settings?.weight.rateLbPerWeek ?? 1}
-          daysLogged={week.data.summary.daysLogged + extraPendingDay}
+          daysLogged={week.data.summary.daysLogged}
           atGoal={expenditure?.atGoal ?? false}
         />
       )}
