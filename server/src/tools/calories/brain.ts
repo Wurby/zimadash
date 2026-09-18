@@ -5,6 +5,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import type { FieldConfig, PendingEstimate } from '../../shared/calories.js';
 import { trackedFields } from './settings.js';
+import { runGrok } from '../../grokQueue.js';
 
 /**
  * Estimating a meal by shelling out to Grok Build (`grok -p`) on the box.
@@ -96,6 +97,11 @@ export function complete(
   const bin = resolveGrok();
   if (!bin) throw new Error('the estimator is not installed on this server');
 
+  // 0 would mean "immediately" on some timer paths and "never" on others.
+  // Never spawn an uncapped process: the queue is the concurrency cap, this
+  // is the hang cap.
+  const ms = timeoutMs > 0 ? timeoutMs : TIMEOUT_MS;
+
   const args = promptFile ? ['--prompt-file', promptFile] : ['-p', prompt];
   args.push(
     '--tools',
@@ -118,33 +124,36 @@ export function complete(
     GROK_MEMORY: '0',
   };
 
-  return new Promise((resolve, reject) => {
-    execFile(
-      bin,
-      args,
-      { timeout: timeoutMs, maxBuffer: MAX_OUTPUT, env },
-      (err, stdout, stderr) => {
-        if (failedAuth(stdout, stderr)) {
-          reject(new Error('the estimator is not logged in on the server'));
-          return;
-        }
-        if (err) {
-          if (err.killed) {
-            reject(new Error('the estimator timed out'));
-            return;
-          }
-          const detail = firstLine(stderr) || firstLine(stdout);
-          reject(
-            new Error(
-              detail ? `the estimator failed to run: ${detail}` : 'the estimator failed to run',
-            ),
-          );
-          return;
-        }
-        resolve(extractText(stdout));
-      },
-    );
-  });
+  return runGrok(
+    () =>
+      new Promise<string>((resolve, reject) => {
+        execFile(
+          bin,
+          args,
+          { timeout: ms, maxBuffer: MAX_OUTPUT, killSignal: 'SIGKILL', env },
+          (err, stdout, stderr) => {
+            if (failedAuth(stdout, stderr)) {
+              reject(new Error('the estimator is not logged in on the server'));
+              return;
+            }
+            if (err) {
+              if (err.killed) {
+                reject(new Error('the estimator timed out'));
+                return;
+              }
+              const detail = firstLine(stderr) || firstLine(stdout);
+              reject(
+                new Error(
+                  detail ? `the estimator failed to run: ${detail}` : 'the estimator failed to run',
+                ),
+              );
+              return;
+            }
+            resolve(extractText(stdout));
+          },
+        );
+      }),
+  );
 }
 
 function describeFields(fields: FieldConfig[]): string {
@@ -226,18 +235,6 @@ function parse(reply: string, fields: FieldConfig[]): Parsed {
   };
 }
 
-/**
- * One estimate at a time. Each call is a process, and a burst of them would
- * bury a small box — and nothing here is worth answering concurrently.
- */
-let queue: Promise<unknown> = Promise.resolve();
-
-export function serialise<T>(work: () => Promise<T>): Promise<T> {
-  const next = queue.then(work, work);
-  queue = next.catch(() => undefined);
-  return next;
-}
-
 function run(prompt: string, promptFile?: string, timeoutMs = TIMEOUT_MS): Promise<string> {
   // Search is always available so a branded or restaurant item can be looked up
   // rather than guessed at. A photograph is attached in the prompt itself, so
@@ -258,14 +255,12 @@ export async function estimateMeal(
   const fields = trackedFields();
   const prompt = buildPrompt(fields, transcript, promptFile !== undefined);
 
-  return serialise(async () => {
-    const output = await run(prompt, promptFile, timeoutMs);
-    try {
-      return parse(output, fields);
-    } catch {
-      return parse(await run(prompt, promptFile, timeoutMs), fields);
-    }
-  });
+  const output = await run(prompt, promptFile, timeoutMs);
+  try {
+    return parse(output, fields);
+  } catch {
+    return parse(await run(prompt, promptFile, timeoutMs), fields);
+  }
 }
 
 async function estimate(transcript: string[], promptFile?: string): Promise<Parsed> {

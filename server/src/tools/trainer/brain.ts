@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { runGrok } from '../../grokQueue.js';
 import {
   IMPLEMENTS,
   loadLadder,
@@ -97,29 +98,32 @@ function run(prompt: string): Promise<string> {
     GROK_MEMORY: '0',
   };
 
-  return new Promise((resolve, reject) => {
-    execFile(
-      bin,
-      [
-        '-p',
-        prompt,
-        '--tools',
-        '',
-        '--no-subagents',
-        '--no-plan',
-        '--disable-web-search',
-        '--always-approve',
-        '--output-format',
-        'json',
-        '--verbatim',
-        '--cwd',
-        scratchDir(),
-      ],
-      { timeout: TIMEOUT_MS, maxBuffer: MAX_OUTPUT, env },
-      (err, stdout) =>
-        err ? reject(new Error('the planner did not respond')) : resolve(extractText(stdout)),
-    );
-  });
+  return runGrok(
+    () =>
+      new Promise<string>((resolve, reject) => {
+        execFile(
+          bin,
+          [
+            '-p',
+            prompt,
+            '--tools',
+            '',
+            '--no-subagents',
+            '--no-plan',
+            '--disable-web-search',
+            '--always-approve',
+            '--output-format',
+            'json',
+            '--verbatim',
+            '--cwd',
+            scratchDir(),
+          ],
+          { timeout: TIMEOUT_MS, maxBuffer: MAX_OUTPUT, killSignal: 'SIGKILL', env },
+          (err, stdout) =>
+            err ? reject(new Error('the planner did not respond')) : resolve(extractText(stdout)),
+        );
+      }),
+  );
 }
 
 interface Candidate {

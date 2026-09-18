@@ -12,10 +12,11 @@ import { allEntries } from './storage.js';
  * names under-count repeats. Grok groups the wordings; we average the numbers
  * and keep the twelve groups logged most often.
  *
- * The pass looks at the last 60 days, runs about monthly on the always-on
- * process — not on view — and is allowed to take as long as it needs. Today
- * reads the cache when it is fresh; otherwise it falls back to exact-name
- * counts over the same window so a failed pass cannot freeze last month's chips.
+ * The pass looks at the last 60 days and rebuilds about monthly. It goes
+ * through the process-wide Grok queue (one CLI at a time) with a 30-minute
+ * hang cap. Today reads the cache when it is fresh; otherwise it falls back
+ * to exact-name counts over the same window so a failed pass cannot freeze
+ * last month's chips.
  */
 
 function file(): string {
@@ -25,9 +26,11 @@ function file(): string {
 const VERSION = 2;
 const WINDOW_MS = 60 * 24 * 60 * 60 * 1000;
 const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
+/** 6h is under Node's 32-bit timer max. A 30-day interval overflows and fires continuously. */
+const CHECK_MS = 6 * 60 * 60 * 1000;
 const CHIP_MAX = 12;
-/** 0 = no timeout. Grouping a couple of months of photo titles is slow on purpose. */
-const CLUSTER_TIMEOUT_MS = 0;
+/** Hang cap. Concurrency is the process-wide Grok queue, not this number. */
+const CLUSTER_TIMEOUT_MS = 30 * 60 * 1000;
 
 export interface ClusterChip {
   description: string;
@@ -206,6 +209,8 @@ export function cachedChips(): ClusterChip[] | null {
   return cache && cache.chips.length > 0 ? cache.chips : null;
 }
 
+let passing = false;
+
 async function tick(): Promise<void> {
   if (loadCache()) return;
   try {
@@ -216,13 +221,19 @@ async function tick(): Promise<void> {
 }
 
 async function tickAll(): Promise<void> {
-  for (const user of listUsers()) {
-    await runAs(user, () => tick());
+  if (passing) return;
+  passing = true;
+  try {
+    for (const user of listUsers()) {
+      await runAs(user, () => tick());
+    }
+  } finally {
+    passing = false;
   }
 }
 
-/** Kick a pass if the cache is stale, then again every month. Never on a view. */
+/** Kick a pass if the cache is stale. Recheck every six hours; rebuild at most monthly. */
 export function startClusterLoop(): void {
   void tickAll();
-  setInterval(() => void tickAll(), MONTH_MS);
+  setInterval(() => void tickAll(), CHECK_MS);
 }

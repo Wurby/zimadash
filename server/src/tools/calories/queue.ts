@@ -4,7 +4,7 @@ import path from 'node:path';
 import { dataFile, personal, readJson, writeJson } from '../../paths.js';
 import { currentUser, runAs } from '../../context.js';
 import type { QueuedMeal, QueueSource } from '../../shared/calories.js';
-import { complete, estimateMeal, serialise, writePhotoJob } from './brain.js';
+import { complete, estimateMeal, writePhotoJob } from './brain.js';
 import { trackedFields } from './settings.js';
 import { addEntry, dayKeyFor, entriesForDay, updateEntry } from './storage.js';
 import type { Entry } from '../../shared/calories.js';
@@ -268,7 +268,7 @@ and must be a plain number.`;
 
   let reply: string;
   try {
-    reply = await serialise(() => complete(prompt, '', WATCHDOG_MS));
+    reply = await complete(prompt, '', WATCHDOG_MS);
   } catch (err) {
     return { error: err instanceof Error ? err.message : 'the adjustment failed' };
   }

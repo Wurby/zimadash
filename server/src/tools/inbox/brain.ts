@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { runGrok } from '../../grokQueue.js';
 
 /**
  * Deciding where an uploaded file belongs by shelling out to Grok Build
@@ -102,47 +103,52 @@ function run(prompt: string, cwd: string): Promise<string> {
     GROK_MEMORY: '0',
   };
 
-  return new Promise((resolve, reject) => {
-    execFile(
-      bin,
-      [
-        '-p',
-        prompt,
-        '--tools',
-        'read_file,grep,list_dir',
-        '--no-subagents',
-        '--no-plan',
-        '--disable-web-search',
-        '--always-approve',
-        '--output-format',
-        'json',
-        '--verbatim',
-        '--cwd',
-        cwd,
-      ],
-      { cwd, timeout: TIMEOUT_MS, maxBuffer: MAX_OUTPUT, env },
-      (err, stdout, stderr) => {
-        if (failedAuth(stdout, stderr)) {
-          reject(new Error('the inbox brain is not logged in on the server'));
-          return;
-        }
-        if (err) {
-          if (err.killed) {
-            reject(new Error('the inbox brain timed out'));
-            return;
-          }
-          const detail = firstLine(stderr) || firstLine(stdout);
-          reject(
-            new Error(
-              detail ? `the inbox brain failed to run: ${detail}` : 'the inbox brain failed to run',
-            ),
-          );
-          return;
-        }
-        resolve(extractText(stdout));
-      },
-    );
-  });
+  return runGrok(
+    () =>
+      new Promise<string>((resolve, reject) => {
+        execFile(
+          bin,
+          [
+            '-p',
+            prompt,
+            '--tools',
+            'read_file,grep,list_dir',
+            '--no-subagents',
+            '--no-plan',
+            '--disable-web-search',
+            '--always-approve',
+            '--output-format',
+            'json',
+            '--verbatim',
+            '--cwd',
+            cwd,
+          ],
+          { cwd, timeout: TIMEOUT_MS, maxBuffer: MAX_OUTPUT, killSignal: 'SIGKILL', env },
+          (err, stdout, stderr) => {
+            if (failedAuth(stdout, stderr)) {
+              reject(new Error('the inbox brain is not logged in on the server'));
+              return;
+            }
+            if (err) {
+              if (err.killed) {
+                reject(new Error('the inbox brain timed out'));
+                return;
+              }
+              const detail = firstLine(stderr) || firstLine(stdout);
+              reject(
+                new Error(
+                  detail
+                    ? `the inbox brain failed to run: ${detail}`
+                    : 'the inbox brain failed to run',
+                ),
+              );
+              return;
+            }
+            resolve(extractText(stdout));
+          },
+        );
+      }),
+  );
 }
 
 function humanSize(bytes: number): string {

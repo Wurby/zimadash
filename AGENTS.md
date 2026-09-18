@@ -227,7 +227,11 @@ The calorie tracker shells out to Grok Build (`grok -p`) installed on the box,
 so it runs on a subscription that already exists rather than a metered API key.
 Capture is fire-and-forget: the phone queues the meal (photo, text, a number,
 or an Again chip) and can lock as soon as the server has the bytes. The brain
-runs in the background. A number or an Again chip writes to the log immediately;
+runs in the background. **One Grok process on the box at a time** — calories,
+trainer, and inbox share a queue (`server/src/grokQueue.ts`). Never spawn it
+outside that queue, and never `setInterval` a delay longer than ~24 days
+(Node's timer is 32-bit; a "monthly" interval overflows and fires continuously).
+A number or an Again chip writes to the log immediately;
 a photo or a sentence writes when the estimate lands. One adjustment box lets
 Grok rewrite whichever logged meal the sentence refers to; that runs in the
 background too, so you can still queue more meals while it processes.
