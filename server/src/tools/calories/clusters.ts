@@ -8,18 +8,26 @@ import { allEntries } from './storage.js';
 /**
  * Fuzzy meal clusters for the Today tab's Again chips.
  *
- * Photo estimates name the same food slightly differently each time, so "most
- * recent distinct names" under-counts the meals you actually repeat. Grok
- * groups the wordings; we average the numbers. The pass runs about weekly on
- * the always-on process — not on view — and Today reads the cache.
+ * Photo estimates name the same food slightly differently each time, so exact
+ * names under-count repeats. Grok groups the wordings; we average the numbers
+ * and keep the twelve groups logged most often.
+ *
+ * The pass looks at the last 60 days, runs about monthly on the always-on
+ * process — not on view — and is allowed to take as long as it needs. Today
+ * reads the cache when it is fresh; otherwise it falls back to exact-name
+ * counts over the same window so a failed pass cannot freeze last month's chips.
  */
 
 function file(): string {
   return personal('calories/clusters.json');
 }
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+const VERSION = 2;
+const WINDOW_MS = 60 * 24 * 60 * 60 * 1000;
+const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
 const CHIP_MAX = 12;
-const CLUSTER_TIMEOUT_MS = 180_000;
+/** 0 = no timeout. Grouping a couple of months of photo titles is slow on purpose. */
+const CLUSTER_TIMEOUT_MS = 0;
 
 export interface ClusterChip {
   description: string;
@@ -49,32 +57,39 @@ function averageValues(entries: Entry[]): Record<string, number> {
   return values;
 }
 
-function pickWeighted<T extends { count: number }>(items: T[], n: number): T[] {
-  const pool = [...items];
-  const picked: T[] = [];
-  const want = Math.min(n, pool.length);
-
-  while (picked.length < want && pool.length > 0) {
-    const total = pool.reduce((sum, item) => sum + item.count, 0);
-    let ticket = Math.random() * total;
-    let index = pool.length - 1;
-    for (let i = 0; i < pool.length; i++) {
-      ticket -= pool[i].count;
-      if (ticket <= 0) {
-        index = i;
-        break;
-      }
-    }
-    picked.push(pool.splice(index, 1)[0]);
-  }
-
-  return picked;
+function namedInWindow(): Entry[] {
+  const cutoff = Date.now() - WINDOW_MS;
+  return allEntries().filter(
+    (entry) =>
+      entry.at >= cutoff && entry.description.trim() && Object.keys(entry.values).length > 0,
+  );
 }
 
-function namedEntries(): Entry[] {
-  return allEntries().filter(
-    (entry) => entry.description.trim() && Object.keys(entry.values).length > 0,
-  );
+function groupedByName(entries: Entry[]): Map<string, Entry[]> {
+  const byName = new Map<string, Entry[]>();
+  for (const entry of entries) {
+    const name = entry.description.trim();
+    const list = byName.get(name) ?? [];
+    list.push(entry);
+    byName.set(name, list);
+  }
+  return byName;
+}
+
+function topChips(groups: { label: string; members: Entry[] }[]): ClusterChip[] {
+  return [...groups]
+    .sort((a, b) => b.members.length - a.members.length)
+    .slice(0, CHIP_MAX)
+    .map((group) => ({
+      description: group.label,
+      values: averageValues(group.members),
+    }));
+}
+
+/** Exact-name counts over the window. Used until a Grok pass has landed. */
+export function fallbackChips(): ClusterChip[] {
+  const byName = groupedByName(namedInWindow());
+  return topChips([...byName.entries()].map(([label, members]) => ({ label, members })));
 }
 
 function buildPrompt(names: { name: string; count: number }[]): string {
@@ -85,7 +100,7 @@ function buildPrompt(names: { name: string; count: number }[]): string {
 These names come from a calorie log. Many were titled by a vision model looking
 at a photograph, so the same plate shows up as several near-phrasings.
 
-Names with how often they were logged:
+Names with how often they were logged in the last 60 days:
 
 ${list}
 
@@ -141,21 +156,13 @@ function parseClusters(reply: string, known: Set<string>): { label: string; memb
 }
 
 async function rebuild(): Promise<ClusterCache> {
-  const entries = namedEntries();
-  const byName = new Map<string, Entry[]>();
-  for (const entry of entries) {
-    const name = entry.description.trim();
-    const list = byName.get(name) ?? [];
-    list.push(entry);
-    byName.set(name, list);
-  }
-
+  const byName = groupedByName(namedInWindow());
   const names = [...byName.entries()]
     .map(([name, list]) => ({ name, count: list.length }))
     .sort((a, b) => b.count - a.count);
 
   if (names.length === 0) {
-    const empty: ClusterCache = { version: 1, at: Date.now(), chips: [] };
+    const empty: ClusterCache = { version: VERSION, at: Date.now(), chips: [] };
     writeJson(file(), empty);
     return empty;
   }
@@ -166,48 +173,41 @@ async function rebuild(): Promise<ClusterCache> {
     try {
       return parseClusters(await complete(prompt, '', CLUSTER_TIMEOUT_MS), known);
     } catch (first) {
-      if (first instanceof Error && /timed out|not installed|not logged in/.test(first.message)) {
+      if (first instanceof Error && /not installed|not logged in/.test(first.message)) {
         throw first;
       }
       return parseClusters(await complete(prompt, '', CLUSTER_TIMEOUT_MS), known);
     }
   })();
 
-  const scored = grouped.map((cluster) => {
-    const members = cluster.members.flatMap((name) => byName.get(name) ?? []);
-    return {
+  const chips = topChips(
+    grouped.map((cluster) => ({
       label: cluster.label,
-      count: members.length,
-      values: averageValues(members),
-    };
-  });
+      members: cluster.members.flatMap((name) => byName.get(name) ?? []),
+    })),
+  );
 
-  const chipCount = Math.min(CHIP_MAX, scored.length);
-  const chips = pickWeighted(scored, chipCount).map((cluster) => ({
-    description: cluster.label,
-    values: cluster.values,
-  }));
-
-  const cache: ClusterCache = { version: 1, at: Date.now(), chips };
+  const cache: ClusterCache = { version: VERSION, at: Date.now(), chips };
   writeJson(file(), cache);
   return cache;
 }
 
 function loadCache(): ClusterCache | null {
   const stored = readJson<ClusterCache>(file());
-  if (!stored || !Array.isArray(stored.chips) || typeof stored.at !== 'number') return null;
+  if (!stored || stored.version !== VERSION) return null;
+  if (!Array.isArray(stored.chips) || typeof stored.at !== 'number') return null;
+  if (Date.now() - stored.at >= MONTH_MS) return null;
   return stored;
 }
 
-/** Cached chips, or null when the weekly pass has not succeeded yet. */
+/** Cached chips, or null when the monthly pass has not succeeded recently. */
 export function cachedChips(): ClusterChip[] | null {
   const cache = loadCache();
   return cache && cache.chips.length > 0 ? cache.chips : null;
 }
 
 async function tick(): Promise<void> {
-  const cache = loadCache();
-  if (cache && Date.now() - cache.at < WEEK_MS) return;
+  if (loadCache()) return;
   try {
     await rebuild();
   } catch (err) {
@@ -221,8 +221,8 @@ async function tickAll(): Promise<void> {
   }
 }
 
-/** Kick a pass if the cache is stale, then again every week. Never on a view. */
+/** Kick a pass if the cache is stale, then again every month. Never on a view. */
 export function startClusterLoop(): void {
   void tickAll();
-  setInterval(() => void tickAll(), WEEK_MS);
+  setInterval(() => void tickAll(), MONTH_MS);
 }

@@ -216,9 +216,9 @@ or sentence.
 **The Log tab.** Lands on today. Breadcrumbs zoom day → week → month → year
 with one calendar (year is twelve months; month and week are days). Week shows
 that week's meals as pills (tap-again to log them to today). Search covers all
-history by name and assumptions. Today’s Again chips are a weekly Grok cluster
-of fuzzy photo names, averaged in code, with the old exact-name list as
-fallback.
+history by name and assumptions. Today’s Again chips are the most-logged meals
+in the last 60 days: Grok groups fuzzy photo names about monthly, numbers are
+averaged in code, and exact-name counts fill in until that pass lands.
 
 **Reports.** A progress view, not a chart dump. This calendar week leads:
 intake against the weekly goal (daily × 7), remaining, and the 3,500 kcal that

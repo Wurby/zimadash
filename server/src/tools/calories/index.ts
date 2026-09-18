@@ -32,11 +32,10 @@ import {
   entriesInRange,
   findEntry,
   patchEntry,
-  recentEntries,
   searchEntries,
   shiftDayKey,
 } from './storage.js';
-import { cachedChips, startClusterLoop } from './clusters.js';
+import { cachedChips, fallbackChips, startClusterLoop } from './clusters.js';
 import {
   adjustError,
   dropItem,
@@ -305,27 +304,9 @@ router.get('/log', (req, res) => {
   });
 });
 
-/** Distinct meals for one-tap re-logging. Clustered when the weekly pass has run. */
+/** Distinct meals for one-tap re-logging. Clustered when the monthly pass has run. */
 router.get('/recent', (_req, res) => {
-  const clustered = cachedChips();
-  if (clustered) {
-    res.json({ meals: clustered });
-    return;
-  }
-
-  const seen = new Set<string>();
-  const meals = recentEntries(60)
-    .filter((entry) => entry.description.trim() && Object.keys(entry.values).length > 0)
-    .filter((entry) => {
-      const key = entry.description.trim().toLowerCase();
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .slice(0, 12)
-    .map(({ description, values }) => ({ description, values }));
-
-  res.json({ meals });
+  res.json({ meals: cachedChips() ?? fallbackChips() });
 });
 
 // ─── Weight ──────────────────────────────────────────────────────────────────
