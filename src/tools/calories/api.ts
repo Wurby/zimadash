@@ -6,9 +6,9 @@ import type {
   FieldConfig,
   LogGrain,
   LogSummary,
-  PendingEstimate,
   QueuedMeal,
   RangeKey,
+  ReestimateStatus,
   Settings,
   WeightReading,
 } from '@shared/calories'
@@ -153,35 +153,25 @@ export const adjustQueued = (day: string, feedback: string) =>
     body: JSON.stringify({ day, feedback }),
   })
 
-export const startEstimate = (description: string) =>
-  api<PendingEstimate>(`${BASE}/estimate`, {
-    method: 'POST',
-    body: JSON.stringify({ description }),
-  })
-
-export const estimateFromPhoto = (image: string) =>
-  api<PendingEstimate>(`${BASE}/estimate/image`, {
-    method: 'POST',
-    body: JSON.stringify({ image }),
-  })
-
-export const refineEstimate = (id: string, feedback: string) =>
-  api<PendingEstimate>(`${BASE}/estimate/${id}/refine`, {
-    method: 'POST',
-    body: JSON.stringify({ feedback }),
-  })
-
-export const commitEstimate = (pendingId: string, values: Record<string, number>) =>
-  api<Entry>(`${BASE}/entries`, { method: 'POST', body: JSON.stringify({ pendingId, values }) })
-
 export const logDirect = (description: string, values: Record<string, number>) =>
   api<Entry>(`${BASE}/entries`, { method: 'POST', body: JSON.stringify({ description, values }) })
 
-export const reestimateEntry = (id: string, feedback: string) =>
-  api<PendingEstimate>(`${BASE}/entries/${id}/reestimate`, {
+/**
+ * Fire off a background correction for one logged entry. Never blocks on the
+ * brain — it shares a single process with every other queued capture, so the
+ * result is read back with `getReestimate` instead of waiting on this call.
+ */
+export const askReestimate = (id: string, feedback: string) =>
+  api<{ ok: true }>(`${BASE}/entries/${id}/reestimate`, {
     method: 'POST',
     body: JSON.stringify({ feedback }),
   })
+
+export const getReestimate = (id: string) =>
+  api<ReestimateStatus>(`${BASE}/entries/${id}/reestimate`)
+
+export const clearReestimate = (id: string) =>
+  api<{ ok: true }>(`${BASE}/entries/${id}/reestimate`, { method: 'DELETE' })
 
 export const patchEntry = (id: string, values: Record<string, number>) =>
   api<Entry>(`${BASE}/entries/${id}`, { method: 'PATCH', body: JSON.stringify({ values }) })

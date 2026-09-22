@@ -2,13 +2,12 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import crypto from 'node:crypto';
-import type { FieldConfig, PendingEstimate } from '../../shared/calories.js';
+import type { FieldConfig } from '../../shared/calories.js';
 import { trackedFields } from './settings.js';
-import { runGrok } from '../../grokQueue.js';
+import { runBrain } from '../../brainQueue.js';
 
 /**
- * Estimating a meal by shelling out to Grok Build (`grok -p`) on the box.
+ * Estimating a meal by shelling out to the Claude CLI (`claude -p`) on the box.
  *
  * The CLI rather than the API on purpose: it runs on the subscription that is
  * already paid for, which is the entire reason this tool exists instead of a
@@ -22,13 +21,12 @@ const TIMEOUT_MS = 90_000;
 const MAX_OUTPUT = 1024 * 1024;
 
 /** systemd gives the unit a minimal PATH, so the CLI has to be found by hand. */
-function resolveGrok(): string | null {
+function resolveClaude(): string | null {
   const candidates = [
-    process.env.ZIMADASH_GROK_BIN,
-    path.join(os.homedir(), '.local/bin/grok'),
-    path.join(os.homedir(), '.grok/bin/grok'),
-    '/usr/local/bin/grok',
-    '/opt/homebrew/bin/grok',
+    process.env.ZIMADASH_CLAUDE_BIN,
+    path.join(os.homedir(), '.local/bin/claude'),
+    '/usr/local/bin/claude',
+    '/opt/homebrew/bin/claude',
   ].filter((candidate): candidate is string => Boolean(candidate));
 
   for (const candidate of candidates) {
@@ -42,8 +40,11 @@ function resolveGrok(): string | null {
   return null;
 }
 
-/** An empty cwd so Grok does not walk up into the deploy tree and ingest this
- *  repo's AGENTS.md as project context for a meal estimate. */
+/** An empty cwd so the brain does not walk up into the deploy tree and ingest
+ *  this repo's own AGENTS.md/CLAUDE.md as project context for a meal estimate.
+ *  The user-level ~/.claude/CLAUDE.md still loads regardless of cwd — there is
+ *  no flag that suppresses it short of --bare, which drops OAuth/subscription
+ *  auth entirely, so that cost is accepted rather than worked around. */
 function scratchDir(): string {
   const dir = path.join(os.tmpdir(), 'zimadash-estimator');
   fs.mkdirSync(dir, { recursive: true });
@@ -51,50 +52,61 @@ function scratchDir(): string {
 }
 
 // The CLI's own words when its session has lapsed — matched against stdout
-// *and* stderr because which stream it lands on isn't reliable, and it has
-// been seen to exit 0 even while saying this.
+// *and* stderr because which stream it lands on isn't reliable, and it prints
+// this as plain text (not the JSON envelope) while still exiting 0.
 const AUTH_FAILURE_PATTERN =
-  /oauth session expired|failed to authenticate|not logged in|not signed in|authentication failed|unauthorized/i;
+  /not logged in|login expired|please run \/login|invalid api key|failed to authenticate|authentication failed|unauthorized/i;
 
 function firstLine(text: string, max = 200): string {
   const line = text.split('\n').find((l) => l.trim().length > 0) ?? '';
   return line.trim().slice(0, max);
 }
 
-/** `grok -p --output-format json` wraps the model's reply in `{ text }`. */
-function extractText(stdout: string): string {
+interface ResultEnvelope {
+  type?: unknown;
+  result?: unknown;
+  is_error?: unknown;
+}
+
+/** `claude -p --output-format json` wraps a successful reply in
+ *  `{ type: "result", result, is_error: false, ... }`. Exit code is 0 even on
+ *  an internal failure (a bad prompt, a refusal, hitting a budget) — `is_error`
+ *  is the real signal, not the process exit code. */
+function parseEnvelope(stdout: string): ResultEnvelope | null {
   const trimmed = stdout.trim();
-  if (!trimmed.startsWith('{')) return stdout;
+  if (!trimmed.startsWith('{')) return null;
   try {
-    const body = JSON.parse(trimmed) as { text?: unknown };
-    if (typeof body.text === 'string') return body.text;
+    return JSON.parse(trimmed) as ResultEnvelope;
   } catch {
-    /* the model itself replied with JSON; parse() will pick it out */
+    return null;
   }
-  return stdout;
+}
+
+function extractText(stdout: string): string {
+  const body = parseEnvelope(stdout);
+  if (!body) return stdout;
+  if (body.is_error === true) {
+    const detail = typeof body.result === 'string' ? body.result.trim() : '';
+    throw new Error(
+      detail ? `the estimator failed: ${detail.slice(0, 200)}` : 'the estimator failed',
+    );
+  }
+  return typeof body.result === 'string' ? body.result : stdout;
 }
 
 function failedAuth(stdout: string, stderr: string): boolean {
   if (AUTH_FAILURE_PATTERN.test(stdout) || AUTH_FAILURE_PATTERN.test(stderr)) return true;
-  try {
-    const body = JSON.parse(stdout.trim()) as { type?: unknown; message?: unknown };
-    return (
-      body.type === 'error' &&
-      typeof body.message === 'string' &&
-      AUTH_FAILURE_PATTERN.test(body.message)
-    );
-  } catch {
-    return false;
-  }
+  const body = parseEnvelope(stdout);
+  return typeof body?.result === 'string' && AUTH_FAILURE_PATTERN.test(body.result);
 }
 
 export function complete(
   prompt: string,
   tools: string,
   timeoutMs = TIMEOUT_MS,
-  promptFile?: string,
+  cwd = scratchDir(),
 ): Promise<string> {
-  const bin = resolveGrok();
+  const bin = resolveClaude();
   if (!bin) throw new Error('the estimator is not installed on this server');
 
   // 0 would mean "immediately" on some timer paths and "never" on others.
@@ -102,35 +114,38 @@ export function complete(
   // is the hang cap.
   const ms = timeoutMs > 0 ? timeoutMs : TIMEOUT_MS;
 
-  const args = promptFile ? ['--prompt-file', promptFile] : ['-p', prompt];
-  args.push(
+  const args = [
+    '-p',
+    prompt,
+    // Restricts which built-in tools exist at all, not just which are
+    // pre-approved — the model literally cannot reach for Bash/Edit/Write.
     '--tools',
     tools,
-    '--no-subagents',
-    '--no-plan',
-    '--always-approve',
+    // 'sonnet' is a rolling alias to the latest Sonnet, not a pinned version —
+    // Opus is the account default and overkill (and pricier) for a JSON
+    // extraction task like this one.
+    '--model',
+    'sonnet',
+    '--permission-mode',
+    'bypassPermissions',
     '--output-format',
     'json',
-    '--verbatim',
-    '--cwd',
-    scratchDir(),
-  );
-  if (!tools) args.push('--disable-web-search');
-  if (promptFile) args.push('--max-turns', '6');
+    // No --mcp-config is passed, so this loads zero MCP servers and skips
+    // every skill — a meal estimate has no business paying for that context.
+    '--strict-mcp-config',
+    '--disable-slash-commands',
+    '--setting-sources',
+    '',
+    '--no-session-persistence',
+  ];
 
-  const env = {
-    ...process.env,
-    GROK_DISABLE_AUTOUPDATER: '1',
-    GROK_MEMORY: '0',
-  };
-
-  return runGrok(
+  return runBrain(
     () =>
       new Promise<string>((resolve, reject) => {
-        execFile(
+        const child = execFile(
           bin,
           args,
-          { timeout: ms, maxBuffer: MAX_OUTPUT, killSignal: 'SIGKILL', env },
+          { cwd, timeout: ms, maxBuffer: MAX_OUTPUT, killSignal: 'SIGKILL' },
           (err, stdout, stderr) => {
             if (failedAuth(stdout, stderr)) {
               reject(new Error('the estimator is not logged in on the server'));
@@ -149,9 +164,17 @@ export function complete(
               );
               return;
             }
-            resolve(extractText(stdout));
+            try {
+              resolve(extractText(stdout));
+            } catch (parseErr) {
+              reject(parseErr instanceof Error ? parseErr : new Error('the estimator failed'));
+            }
           },
         );
+        // Verified live: claude -p reads whatever is available on stdin and
+        // folds it into the prompt. Nothing should ever reach the model but
+        // the prompt string, so stdin is closed rather than left open-unfed.
+        child.stdin?.end();
       }),
   );
 }
@@ -162,15 +185,15 @@ function describeFields(fields: FieldConfig[]): string {
     .join('\n');
 }
 
-function buildPrompt(fields: FieldConfig[], transcript: string[], withImage = false): string {
+function buildPrompt(fields: FieldConfig[], transcript: string[], imagePath?: string): string {
   const now = new Date();
   const clock = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const day = now.toLocaleDateString([], { weekday: 'long' });
 
-  const image = withImage
-    ? `The attached image is a photograph of the meal. Judge the portion from
-what is on the plate and from anything in shot that gives scale — cutlery, a
-hand, the size of the plate itself.
+  const image = imagePath
+    ? `Read the image at ${imagePath}. It is a photograph of the meal. Judge the
+portion from what is on the plate and from anything in shot that gives scale —
+cutlery, a hand, the size of the plate itself.
 
 `
     : '';
@@ -235,174 +258,59 @@ function parse(reply: string, fields: FieldConfig[]): Parsed {
   };
 }
 
-function run(prompt: string, promptFile?: string, timeoutMs = TIMEOUT_MS): Promise<string> {
-  // Search is always available so a branded or restaurant item can be looked up
-  // rather than guessed at. A photograph is attached in the prompt itself, so
-  // read_file is not granted. web_fetch stays excluded.
-  return complete(prompt, 'web_search', timeoutMs, promptFile);
+/** Search is always available so a branded or restaurant item can be looked up
+ *  rather than guessed at. Read is added only when there is a photograph to
+ *  look at — nothing else is ever granted, in particular not WebFetch, which
+ *  would let a crafted description send this box to an arbitrary URL. */
+function run(prompt: string, imagePath?: string, timeoutMs = TIMEOUT_MS): Promise<string> {
+  const tools = imagePath ? 'WebSearch,Read' : 'WebSearch';
+  return complete(prompt, tools, timeoutMs);
 }
 
 /**
  * Run an estimate off the HTTP request. The queue uses a long watchdog
- * (Grok's own 30-minute answer timeout); the old synchronous endpoints keep
- * the short tunnel budget.
+ * (30 minutes); a synchronous route would need the short tunnel budget
+ * instead, so nothing reaching the brain is ever awaited directly on a
+ * response — every caller queues and polls.
  */
 export async function estimateMeal(
   transcript: string[],
-  promptFile?: string,
+  imagePath?: string,
   timeoutMs = TIMEOUT_MS,
 ): Promise<Parsed> {
   const fields = trackedFields();
-  const prompt = buildPrompt(fields, transcript, promptFile !== undefined);
+  const prompt = buildPrompt(fields, transcript, imagePath);
 
-  const output = await run(prompt, promptFile, timeoutMs);
+  const output = await run(prompt, imagePath, timeoutMs);
   try {
     return parse(output, fields);
   } catch {
-    return parse(await run(prompt, promptFile, timeoutMs), fields);
+    return parse(await run(prompt, imagePath, timeoutMs), fields);
   }
 }
 
-async function estimate(transcript: string[], promptFile?: string): Promise<Parsed> {
-  return estimateMeal(transcript, promptFile, TIMEOUT_MS);
-}
-
-/** Write a grok --prompt-file job that includes the photograph as an image block. */
-export function writePhotoJob(base64: string, dest: string, transcript: string[]): void {
-  const fields = trackedFields();
-  const prompt = buildPrompt(fields, transcript, true);
+/** Write a photographed meal to disk as a plain image file. The brain reads it
+ *  by path (granted `Read`) rather than receiving it inline — there is no
+ *  headless equivalent of an inline image block for a one-shot `-p` call. */
+export function writePhotoFile(base64: string, dest: string): void {
   fs.mkdirSync(path.dirname(dest), { recursive: true, mode: 0o700 });
-  fs.writeFileSync(
-    dest,
-    JSON.stringify([
-      { type: 'text', text: prompt },
-      { type: 'image', mimeType: 'image/jpeg', data: base64 },
-    ]),
-    { mode: 0o600 },
-  );
-}
-
-// ─── Pending threads ─────────────────────────────────────────────────────────
-// Held in memory on purpose. A phone lock or an app switch leaves the thread
-// waiting; a server restart clears it and you start over. That is the behaviour
-// asked for, and it means no half-finished meals accumulate on disk.
-
-interface Thread extends PendingEstimate {
-  transcript: string[];
-}
-
-const threads = new Map<string, Thread>();
-const MAX_THREADS = 20;
-
-function remember(description: string, transcript: string[], parsed: Parsed): PendingEstimate {
-  if (threads.size >= MAX_THREADS) {
-    const oldest = threads.keys().next().value;
-    if (oldest !== undefined) threads.delete(oldest);
-  }
-
-  const thread: Thread = {
-    id: crypto.randomBytes(8).toString('hex'),
-    description,
-    values: parsed.values,
-    assumptions: parsed.assumptions,
-    rounds: 0,
-    // The estimate goes into the transcript so a later correction has the
-    // numbers to work from — which is also what lets a photo be refined by text
-    // after its file is gone.
-    transcript: [...transcript, `You estimated: ${JSON.stringify(parsed)}`],
-  };
-  threads.set(thread.id, thread);
-
-  return toPending(thread);
-}
-
-export async function startEstimate(description: string): Promise<PendingEstimate> {
-  const transcript = [`Meal: ${description}`];
-  return remember(description, transcript, await estimate(transcript));
+  fs.writeFileSync(dest, Buffer.from(base64, 'base64'), { mode: 0o600 });
 }
 
 /**
- * Estimate from a photograph.
- *
- * The image is written to the OS temp directory, read once, and deleted in a
- * finally — it never touches DATA_DIR and never outlives the call. What
- * survives is the model's own name for the meal and its numbers, which is
- * enough for the refinement rounds to work on afterwards without the picture.
- */
-export async function startImageEstimate(base64: string): Promise<PendingEstimate> {
-  const fields = trackedFields();
-  const prompt = buildPrompt(fields, ['Meal: the photograph.'], true);
-  const file = path.join(scratchDir(), `meal-${crypto.randomBytes(8).toString('hex')}.json`);
-  fs.writeFileSync(
-    file,
-    JSON.stringify([
-      { type: 'text', text: prompt },
-      { type: 'image', mimeType: 'image/jpeg', data: base64 },
-    ]),
-    { mode: 0o600 },
-  );
-
-  try {
-    const parsed = await estimate(['Meal: the photograph.'], file);
-    const description = parsed.name || 'photographed meal';
-    return remember(description, [`Meal: ${description}, from a photograph.`], parsed);
-  } finally {
-    fs.rmSync(file, { force: true });
-  }
-}
-
-/**
- * Re-estimate a meal that's already been logged.
- *
- * Seeds a normal thread from what was recorded, so everything downstream — the
- * refinement rounds, the expiry, the memory-only lifetime — behaves exactly as
- * it does for a fresh estimate. The difference is only what happens on approval:
- * this updates the entry rather than creating one.
+ * Re-estimate a meal that's already been logged, from a spoken correction.
+ * Returns the new numbers directly — the caller applies them; there is no
+ * pending/multi-round thread here, since nothing downstream ever resumed one.
  */
 export async function reestimateEntry(
   description: string,
   values: Record<string, number>,
   feedback: string,
-): Promise<PendingEstimate> {
+): Promise<Parsed> {
   const transcript = [
     `Meal: ${description || 'a previously logged meal'}`,
     `It was recorded as: ${JSON.stringify(values)}`,
     `Correction from the person who ate it: ${feedback}`,
   ];
-  return remember(description, transcript, await estimate(transcript));
-}
-
-export async function refineEstimate(
-  id: string,
-  feedback: string,
-): Promise<PendingEstimate | null> {
-  const thread = threads.get(id);
-  if (!thread) return null;
-
-  thread.transcript.push(`Correction from the person who ate it: ${feedback}`);
-  const { values, assumptions } = await estimate(thread.transcript);
-
-  thread.values = values;
-  thread.assumptions = assumptions;
-  thread.rounds += 1;
-  thread.transcript.push(`You estimated: ${JSON.stringify({ values, assumptions })}`);
-
-  return toPending(thread);
-}
-
-export function takeThread(id: string): PendingEstimate | null {
-  const thread = threads.get(id);
-  if (!thread) return null;
-  threads.delete(id);
-  return toPending(thread);
-}
-
-function toPending(thread: Thread): PendingEstimate {
-  return {
-    id: thread.id,
-    description: thread.description,
-    values: thread.values,
-    assumptions: thread.assumptions,
-    rounds: thread.rounds,
-  };
+  return estimateMeal(transcript);
 }

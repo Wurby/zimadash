@@ -18,19 +18,11 @@ import { readSettings, writeSettings, trackedFields } from './settings.js';
 import { allReadings, deleteReading, putReading } from './weight.js';
 import { computeExpenditure, trendSeries } from './expenditure.js';
 import {
-  reestimateEntry,
-  refineEstimate,
-  startEstimate,
-  startImageEstimate,
-  takeThread,
-} from './brain.js';
-import {
   addEntry,
   dayKeyFor,
   deleteEntry,
   entriesForDay,
   entriesInRange,
-  findEntry,
   patchEntry,
   searchEntries,
   shiftDayKey,
@@ -38,6 +30,7 @@ import {
 import { cachedChips, fallbackChips, startClusterLoop } from './clusters.js';
 import {
   adjustError,
+  clearReestimate,
   dropItem,
   fillItem,
   isAdjusting,
@@ -45,7 +38,9 @@ import {
   queueAdjust,
   queueDirect,
   queuePhoto,
+  queueReestimate,
   queueText,
+  reestimateStatus,
   resumeWorking,
 } from './queue.js';
 
@@ -365,93 +360,13 @@ router.post('/weight/baseline', (_req, res) => {
   );
 });
 
-// ─── Estimating ──────────────────────────────────────────────────────────────
-
-router.post('/estimate', async (req, res) => {
-  const description = typeof req.body?.description === 'string' ? req.body.description.trim() : '';
-  if (!description) {
-    res.status(400).json({ error: 'describe what you ate' });
-    return;
-  }
-
-  try {
-    res.json(await startEstimate(description));
-  } catch (err) {
-    res.status(503).json({ error: err instanceof Error ? err.message : 'estimate failed' });
-  }
-});
-
-/**
- * Estimate from a photograph. The body is base64 rather than multipart so this
- * needs no upload dependency; the client downscales first, so a few hundred KB
- * arrives rather than a phone's full 5MB.
- */
-router.post('/estimate/image', async (req, res) => {
-  const raw = typeof req.body?.image === 'string' ? req.body.image : '';
-  // Accept a bare base64 string or a whole data: URL.
-  const base64 = raw.includes(',') ? raw.slice(raw.indexOf(',') + 1) : raw;
-
-  if (!base64) {
-    res.status(400).json({ error: 'no photo received' });
-    return;
-  }
-  if (base64.length > 12_000_000) {
-    res.status(413).json({ error: 'that photo is too large' });
-    return;
-  }
-
-  try {
-    res.json(await startImageEstimate(base64));
-  } catch (err) {
-    res.status(503).json({ error: err instanceof Error ? err.message : 'estimate failed' });
-  }
-});
-
-router.post('/estimate/:id/refine', async (req, res) => {
-  const feedback = typeof req.body?.feedback === 'string' ? req.body.feedback.trim() : '';
-  if (!feedback) {
-    res.status(400).json({ error: 'say what to change' });
-    return;
-  }
-
-  try {
-    const pending = await refineEstimate(req.params.id, feedback);
-    if (!pending) {
-      res.status(410).json({ error: 'that estimate has expired — start again' });
-      return;
-    }
-    res.json(pending);
-  } catch (err) {
-    res.status(503).json({ error: err instanceof Error ? err.message : 'estimate failed' });
-  }
-});
-
 // ─── Writing ─────────────────────────────────────────────────────────────────
 
 router.post('/entries', (req, res) => {
   const body = req.body as {
-    pendingId?: string;
     description?: string;
     values?: Record<string, number>;
   };
-
-  // Committing an estimate: take the thread so a double-tap can't log twice.
-  if (body?.pendingId) {
-    const pending = takeThread(body.pendingId);
-    if (!pending) {
-      res.status(410).json({ error: 'that estimate has expired — start again' });
-      return;
-    }
-    res.json(
-      addEntry({
-        at: Date.now(),
-        description: pending.description,
-        values: body.values ?? pending.values,
-        assumptions: pending.assumptions,
-      }),
-    );
-    return;
-  }
 
   // Hand-entered: a bare number, or a re-log of a recent meal.
   const values = body?.values;
@@ -483,27 +398,33 @@ router.post('/entries', (req, res) => {
 });
 
 /**
- * Correct a logged meal by describing what was wrong. Returns a pending estimate
- * that refines through the ordinary route; approving it PATCHes this entry.
+ * Correct a logged meal by describing what was wrong. Fire-and-forget, like the
+ * day-wide adjustment box — the brain call is never on the HTTP request, since
+ * it shares one process with every other queued capture. The client polls the
+ * status route below for the proposal, then PATCHes the entry itself.
  */
-router.post('/entries/:id/reestimate', async (req, res) => {
+router.post('/entries/:id/reestimate', (req, res) => {
   const feedback = typeof req.body?.feedback === 'string' ? req.body.feedback.trim() : '';
   if (!feedback) {
     res.status(400).json({ error: 'say what was wrong with it' });
     return;
   }
 
-  const entry = findEntry(req.params.id);
-  if (!entry) {
-    res.status(404).json({ error: 'no such entry' });
+  const result = queueReestimate(req.params.id, feedback);
+  if (result.error) {
+    res.status(409).json({ error: result.error });
     return;
   }
+  res.status(202).json({ ok: true });
+});
 
-  try {
-    res.json(await reestimateEntry(entry.description, entry.values, feedback));
-  } catch (err) {
-    res.status(503).json({ error: err instanceof Error ? err.message : 'estimate failed' });
-  }
+router.get('/entries/:id/reestimate', (req, res) => {
+  res.json(reestimateStatus(req.params.id));
+});
+
+router.delete('/entries/:id/reestimate', (req, res) => {
+  clearReestimate(req.params.id);
+  res.json({ ok: true });
 });
 
 router.patch('/entries/:id', (req, res) => {

@@ -9,11 +9,11 @@ import { allEntries } from './storage.js';
  * Fuzzy meal clusters for the Today tab's Again chips.
  *
  * Photo estimates name the same food slightly differently each time, so exact
- * names under-count repeats. Grok groups the wordings; we average the numbers
- * and keep the twelve groups logged most often.
+ * names under-count repeats. The brain groups the wordings; we average the
+ * numbers and keep the twelve groups logged most often.
  *
  * The pass looks at the last 60 days and rebuilds about monthly. It goes
- * through the process-wide Grok queue (one CLI at a time) with a 30-minute
+ * through the process-wide brain queue (one CLI at a time) with a 30-minute
  * hang cap. Today reads the cache when it is fresh; otherwise it falls back
  * to exact-name counts over the same window so a failed pass cannot freeze
  * last month's chips.
@@ -29,7 +29,7 @@ const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
 /** 6h is under Node's 32-bit timer max. A 30-day interval overflows and fires continuously. */
 const CHECK_MS = 6 * 60 * 60 * 1000;
 const CHIP_MAX = 12;
-/** Hang cap. Concurrency is the process-wide Grok queue, not this number. */
+/** Hang cap. Concurrency is the process-wide brain queue, not this number. */
 const CLUSTER_TIMEOUT_MS = 30 * 60 * 1000;
 
 export interface ClusterChip {
@@ -89,7 +89,7 @@ function topChips(groups: { label: string; members: Entry[] }[]): ClusterChip[] 
     }));
 }
 
-/** Exact-name counts over the window. Used until a Grok pass has landed. */
+/** Exact-name counts over the window. Used until a cluster pass has landed. */
 export function fallbackChips(): ClusterChip[] {
   const byName = groupedByName(namedInWindow());
   return topChips([...byName.entries()].map(([label, members]) => ({ label, members })));

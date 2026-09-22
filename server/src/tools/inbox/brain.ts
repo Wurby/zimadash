@@ -2,40 +2,39 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { runGrok } from '../../grokQueue.js';
+import { runBrain } from '../../brainQueue.js';
 
 /**
- * Deciding where an uploaded file belongs by shelling out to Grok Build
- * (`grok -p`) on the box — the same subscription-CLI bargain as the estimator
- * and the trainer.
+ * Deciding where an uploaded file belongs by shelling out to the Claude CLI
+ * (`claude -p`) on the box — the same subscription-CLI bargain as the
+ * estimator and the trainer.
  *
  * **Judgement, not placement.** The model never writes anything. It reads
- * <root>/AGENTS.md and explores with list_dir/grep, then returns a decision —
+ * <root>/AGENTS.md and explores with Glob/Grep, then returns a decision —
  * a folder, a filename, a confidence, one sentence why. Our own code validates
  * that decision against the root (root.ts's resolveWithin) and performs the
  * actual move. Same boundary as the trainer's weight-snapping: the model
  * chooses, code executes — which is also what makes the traversal check worth
  * doing.
  *
- * **Grant: read_file, grep, list_dir, nothing else.** read_file opens AGENTS.md
- * and, for a small safe-to-open file, the upload itself. list_dir and grep
- * confirm what actually exists against what the layout doc claims. No write,
- * no shell — a decide-only tool has nothing to gain from them. No web_search
- * or web_fetch — filing a local file needs no network, and web_fetch stays
- * excluded repo-wide.
+ * **Grant: Read, Grep, Glob, nothing else.** Read opens AGENTS.md and, for a
+ * small safe-to-open file, the upload itself. Glob (there is no separate
+ * "list directory" tool) and Grep confirm what actually exists against what
+ * the layout doc claims. No write, no shell — a decide-only tool has nothing
+ * to gain from them. No WebSearch or WebFetch — filing a local file needs no
+ * network, and WebFetch stays excluded repo-wide.
  */
 
 const TIMEOUT_MS = 180_000;
 const MAX_OUTPUT = 1024 * 1024;
 
 /** systemd gives the unit a minimal PATH, so the CLI has to be found by hand. */
-function resolveGrok(): string | null {
+function resolveClaude(): string | null {
   const candidates = [
-    process.env.ZIMADASH_GROK_BIN,
-    path.join(os.homedir(), '.local/bin/grok'),
-    path.join(os.homedir(), '.grok/bin/grok'),
-    '/usr/local/bin/grok',
-    '/opt/homebrew/bin/grok',
+    process.env.ZIMADASH_CLAUDE_BIN,
+    path.join(os.homedir(), '.local/bin/claude'),
+    '/usr/local/bin/claude',
+    '/opt/homebrew/bin/claude',
   ].filter((candidate): candidate is string => Boolean(candidate));
 
   for (const candidate of candidates) {
@@ -49,83 +48,89 @@ function resolveGrok(): string | null {
   return null;
 }
 
-// The CLI's own words when its session has lapsed — matched against stdout
-// *and* stderr because which stream it lands on isn't reliable.
 const AUTH_FAILURE_PATTERN =
-  /oauth session expired|failed to authenticate|not logged in|not signed in|authentication failed|unauthorized/i;
+  /not logged in|login expired|please run \/login|invalid api key|failed to authenticate|authentication failed|unauthorized/i;
+
+interface ResultEnvelope {
+  result?: unknown;
+  is_error?: unknown;
+}
+
+/** `claude -p --output-format json` wraps a successful reply in
+ *  `{ result, is_error: false, ... }`. Exit code is 0 even on an internal
+ *  failure, so is_error is the real signal, not the process exit code. */
+function parseEnvelope(stdout: string): ResultEnvelope | null {
+  const trimmed = stdout.trim();
+  if (!trimmed.startsWith('{')) return null;
+  try {
+    return JSON.parse(trimmed) as ResultEnvelope;
+  } catch {
+    return null;
+  }
+}
+
+function extractText(stdout: string): string {
+  const body = parseEnvelope(stdout);
+  if (!body) return stdout;
+  if (body.is_error === true) {
+    const detail = typeof body.result === 'string' ? body.result.trim() : '';
+    throw new Error(
+      detail ? `the inbox brain failed: ${detail.slice(0, 200)}` : 'the inbox brain failed',
+    );
+  }
+  return typeof body.result === 'string' ? body.result : stdout;
+}
+
+function failedAuth(stdout: string): boolean {
+  if (AUTH_FAILURE_PATTERN.test(stdout)) return true;
+  const body = parseEnvelope(stdout);
+  return typeof body?.result === 'string' && AUTH_FAILURE_PATTERN.test(body.result);
+}
 
 function firstLine(text: string, max = 200): string {
   const line = text.split('\n').find((l) => l.trim().length > 0) ?? '';
   return line.trim().slice(0, max);
 }
 
-/** `grok -p --output-format json` wraps the model's reply in `{ text }`. */
-function extractText(stdout: string): string {
-  const trimmed = stdout.trim();
-  if (!trimmed.startsWith('{')) return stdout;
-  try {
-    const body = JSON.parse(trimmed) as { text?: unknown };
-    if (typeof body.text === 'string') return body.text;
-  } catch {
-    /* the model itself replied with JSON; parse() will pick it out */
-  }
-  return stdout;
-}
-
-function failedAuth(stdout: string, stderr: string): boolean {
-  if (AUTH_FAILURE_PATTERN.test(stdout) || AUTH_FAILURE_PATTERN.test(stderr)) return true;
-  try {
-    const body = JSON.parse(stdout.trim()) as { type?: unknown; message?: unknown };
-    return (
-      body.type === 'error' &&
-      typeof body.message === 'string' &&
-      AUTH_FAILURE_PATTERN.test(body.message)
-    );
-  } catch {
-    return false;
-  }
-}
-
 /**
- * cwd matters here in a way it doesn't for the other two brains: read_file,
- * grep and list_dir are scoped to the CLI's working directory, and without
- * pinning it to the drop root the model would explore the deployed artifact
- * instead. The staged upload lives outside that root; grok can still open it
- * by absolute path.
+ * cwd matters here in a way it doesn't for the other two brains: Read, Grep
+ * and Glob are scoped to the CLI's working directory, and without pinning it
+ * to the drop root the model would explore the deployed artifact instead. The
+ * staged upload lives outside that root; the brain can still open it by
+ * absolute path.
  */
 function run(prompt: string, cwd: string): Promise<string> {
-  const bin = resolveGrok();
+  const bin = resolveClaude();
   if (!bin) throw new Error('the inbox brain is not installed on this server');
 
-  const env = {
-    ...process.env,
-    GROK_DISABLE_AUTOUPDATER: '1',
-    GROK_MEMORY: '0',
-  };
-
-  return runGrok(
+  return runBrain(
     () =>
       new Promise<string>((resolve, reject) => {
-        execFile(
+        const child = execFile(
           bin,
           [
             '-p',
             prompt,
             '--tools',
-            'read_file,grep,list_dir',
-            '--no-subagents',
-            '--no-plan',
-            '--disable-web-search',
-            '--always-approve',
+            'Read,Grep,Glob',
+            // 'sonnet' is a rolling alias to the latest Sonnet, not a pinned
+            // version — Opus is the account default and overkill for a
+            // filing decision.
+            '--model',
+            'sonnet',
+            '--permission-mode',
+            'bypassPermissions',
             '--output-format',
             'json',
-            '--verbatim',
-            '--cwd',
-            cwd,
+            '--strict-mcp-config',
+            '--disable-slash-commands',
+            '--setting-sources',
+            '',
+            '--no-session-persistence',
           ],
-          { cwd, timeout: TIMEOUT_MS, maxBuffer: MAX_OUTPUT, killSignal: 'SIGKILL', env },
+          { cwd, timeout: TIMEOUT_MS, maxBuffer: MAX_OUTPUT, killSignal: 'SIGKILL' },
           (err, stdout, stderr) => {
-            if (failedAuth(stdout, stderr)) {
+            if (failedAuth(stdout)) {
               reject(new Error('the inbox brain is not logged in on the server'));
               return;
             }
@@ -144,9 +149,17 @@ function run(prompt: string, cwd: string): Promise<string> {
               );
               return;
             }
-            resolve(extractText(stdout));
+            try {
+              resolve(extractText(stdout));
+            } catch (parseErr) {
+              reject(parseErr instanceof Error ? parseErr : new Error('the inbox brain failed'));
+            }
           },
         );
+        // Verified live: claude -p reads whatever is available on stdin and
+        // folds it into the prompt. Nothing should ever reach the model but
+        // the prompt string, so stdin is closed rather than left open-unfed.
+        child.stdin?.end();
       }),
   );
 }
@@ -157,9 +170,9 @@ function humanSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-// Extensions small and safe enough to hand the model via read_file — text and
+// Extensions small and safe enough to hand the model via Read — text and
 // images the CLI can already open. Everything else is described by name and
-// size alone: audio and video carry no textual content read_file can use, and
+// size alone: audio and video carry no textual content Read can use, and
 // a large binary risks the output buffer for no benefit.
 const READABLE_EXTENSIONS = new Set([
   '.txt',
@@ -200,7 +213,7 @@ function buildPrompt(
 
 The root of that filing system is ${root}, which is also your working
 directory. Read AGENTS.md there first -- it documents the layout and the
-rules for what goes where. Then look around with list_dir and grep as far as
+rules for what goes where. Then look around with Glob and Grep as far as
 you need to. Do not file into a dotfolder (.git, .obsidian, .trash, and the
 like) even if it looks like a plausible destination.
 
@@ -255,16 +268,6 @@ function parse(reply: string): Decision {
   return { folder, filename, confidence, reasoning };
 }
 
-/** One decision at a time -- a small box shouldn't run two CLI processes at
- *  once, and nothing here is worth answering concurrently. */
-let queue: Promise<unknown> = Promise.resolve();
-
-function serialise<T>(work: () => Promise<T>): Promise<T> {
-  const next = queue.then(work, work);
-  queue = next.catch(() => undefined);
-  return next;
-}
-
 export async function decidePlacement(
   root: string,
   filename: string,
@@ -274,15 +277,13 @@ export async function decidePlacement(
 ): Promise<Decision> {
   const prompt = buildPrompt(root, filename, size, stagedPath, instructions);
 
-  return serialise(async () => {
-    // A run() failure -- auth, a missing binary, a timeout -- is the same
-    // problem every time and isn't retried. Only a bad reply from a
-    // successful run is, since that's usually a one-off.
-    const output = await run(prompt, root);
-    try {
-      return parse(output);
-    } catch {
-      return parse(await run(prompt, root));
-    }
-  });
+  // A run() failure -- auth, a missing binary, a timeout -- is the same
+  // problem every time and isn't retried. Only a bad reply from a
+  // successful run is, since that's usually a one-off.
+  const output = await run(prompt, root);
+  try {
+    return parse(output);
+  } catch {
+    return parse(await run(prompt, root));
+  }
 }

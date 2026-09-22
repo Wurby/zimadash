@@ -92,14 +92,12 @@ export interface Entry {
   edited?: boolean;
 }
 
-/** An estimate awaiting approval. Lives in server memory, not on disk. */
-export interface PendingEstimate {
-  id: string;
-  description: string;
-  values: Record<string, number>;
-  assumptions: string;
-  /** How many refinement rounds this thread has been through. */
-  rounds: number;
+/** Status of a single logged entry's "ask AI" correction. Lives in server
+ *  memory, not on disk — polled from the Log tab after firing the request. */
+export interface ReestimateStatus {
+  working: boolean;
+  proposal: { values: Record<string, number>; assumptions: string } | null;
+  error: string | null;
 }
 
 export type QueueStatus = 'working' | 'ready' | 'empty';

@@ -148,8 +148,8 @@ The design fork is unchanged: one habit large, or every habit small.
 Each of these is blocked on a trigger, not on effort. They're recorded so the
 reasoning doesn't get re-litigated — don't pick one up until its trigger fires.
 
-- **Swap the estimator from Grok Build (`grok -p`) to the API.** Roughly a
-  third of the latency, at the cost of a metered key. _Trigger:_ the wait
+- **Swap the estimator from the Claude CLI (`claude -p`) to the API.** Roughly
+  a third of the latency, at the cost of a metered key. _Trigger:_ the wait
   annoys.
 - **Server-sent events instead of polling.** _Trigger:_ the wall display wants
   it; nothing else does.
@@ -207,8 +207,8 @@ retyping numbers, a macro-derived calorie figure offered as a suggestion, and
 re-logging of recent meals.
 
 **Queued capture.** Photo and text hit a server queue and return immediately;
-Grok fills them in the background (30 minute watchdog; a hang stays working)
-and they write to the log when the numbers land. A number or an Again chip
+the brain fills them in the background (30 minute watchdog; a hang stays
+working) and they write to the log when the numbers land. A number or an Again chip
 logs at once. One adjustment box rewrites whichever logged meal the sentence
 refers to. A failed estimate stays an empty slot you fill with another photo
 or sentence.
@@ -217,7 +217,7 @@ or sentence.
 with one calendar (year is twelve months; month and week are days). Week shows
 that week's meals as pills (tap-again to log them to today). Search covers all
 history by name and assumptions. Today’s Again chips are the most-logged meals
-in the last 60 days: Grok groups fuzzy photo names about monthly, numbers are
+in the last 60 days: the brain groups fuzzy photo names about monthly, numbers are
 averaged in code, and exact-name counts fill in until that pass lands.
 
 **Reports.** A progress view, not a chart dump. This calendar week leads:
@@ -384,7 +384,7 @@ inbox_; this is what got built.
 The design fork that mattered: no fixed destination list. Rather than
 hardcoding folders, the model is pointed at `ZIMADASH_INBOX_ROOT` and told to
 read `AGENTS.md` there first — the same convention this repo uses on itself —
-then explore with `list_dir` and `grep`. It only ever returns a decision; the server
+then explore with `Glob` and `Grep`. It only ever returns a decision; the server
 validates the chosen path and performs the write, the same judgement/execution
 split as the trainer's weight snapping.
 
@@ -396,15 +396,21 @@ dropped — low confidence or a failed validation lands the file in
 logged reason, checkable from the tool's own View.
 
 `ZIMADASH_INBOX_ROOT` is set by the systemd unit to `%h/inbox`. The other
-`ZIMADASH_*` vars (`ZIMADASH_GROK_BIN`/`ZIMADASH_PIPER_BIN`) still have no
-tracked provisioning — the brains find `grok` on the installer PATH without an
-override.
+`ZIMADASH_*` vars (`ZIMADASH_CLAUDE_BIN`/`ZIMADASH_PIPER_BIN`) still have no
+tracked provisioning — the brains find `claude` on the installer PATH without
+an override.
 
-**Grok Build.** The estimator, trainer, inbox, and the deploy commit-message
-step all shell out to `grok -p` on the subscription that already exists, not a
-metered key. Grants stay tight: `web_search` (plus `read_file` for a photo) on
-calories; nothing on the trainer; `read_file,grep,list_dir` on the inbox.
-Verified in use: a text meal, a photo meal, a trainer model plan, and an inbox
-drop.
+**The Claude CLI.** The estimator, trainer, inbox, and the deploy
+commit-message step all shell out to `claude -p` on the subscription that
+already exists, not a metered key — this replaced a stretch on Grok Build
+(`grok -p`), which replaced the original Claude CLI version before it; see the
+brain's own file for why. Grants stay tight: `WebSearch` (plus `Read` for a
+photo) on calories; nothing on the trainer; `Read,Grep,Glob` on the inbox.
+Every call also skips MCP servers, skills, and project/user settings — none of
+it belongs in a one-shot JSON extraction — though the user-level
+`~/.claude/CLAUDE.md` still loads regardless, since suppressing it needs
+`--bare`, which drops subscription auth for a metered key. Not yet re-verified
+against this version of the CLI on the box; do that before trusting a plan or
+an estimate that comes back oddly.
 
 Phase numbering stopped here — everything above is a tool, not a phase.

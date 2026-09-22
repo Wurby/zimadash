@@ -3,25 +3,25 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { dataFile, personal, readJson, writeJson } from '../../paths.js';
 import { currentUser, runAs } from '../../context.js';
-import type { QueuedMeal, QueueSource } from '../../shared/calories.js';
-import { complete, estimateMeal, writePhotoJob } from './brain.js';
+import type { QueuedMeal, QueueSource, ReestimateStatus } from '../../shared/calories.js';
+import { complete, estimateMeal, reestimateEntry, writePhotoFile } from './brain.js';
 import { trackedFields } from './settings.js';
-import { addEntry, dayKeyFor, entriesForDay, updateEntry } from './storage.js';
+import { addEntry, dayKeyFor, entriesForDay, findEntry, updateEntry } from './storage.js';
 import type { Entry } from '../../shared/calories.js';
 
 /**
- * In-flight captures. Photo and text land here; Grok fills them in off the
- * request, then they are written to the log. A number or an Again chip skips
- * this and logs immediately.
+ * In-flight captures. Photo and text land here; the brain fills them in off
+ * the request, then they are written to the log. A number or an Again chip
+ * skips this and logs immediately.
  *
  * Same bargain as the inbox: bytes (or the typed meal) hit DATA_DIR before a
  * 202 goes back, so locking the phone cannot lose the capture. The HTTP
  * request never waits on the brain — the tunnel's ~100s cap sits on the
- * upload, not on Grok.
+ * upload, not on the estimate.
  *
- * Watchdog is 30 minutes, Grok's own default wait for an answer. Until then
- * the item stays working. Only a real brain failure (auth, crash, unparseable
- * reply, or that watchdog) becomes an empty slot.
+ * Watchdog is 30 minutes, a cap chosen here rather than inherited from the
+ * CLI. Until then the item stays working. Only a real brain failure (auth,
+ * crash, unparseable reply, or that watchdog) becomes an empty slot.
  */
 
 function queueFile(): string {
@@ -32,7 +32,6 @@ function incomingDir(): string {
   return personal('calories/incoming');
 }
 
-/** Grok's own [toolset.ask_user_question] timeout_secs default. */
 const WATCHDOG_MS = 1_800_000;
 
 const queues = new Map<string, QueuedMeal[]>();
@@ -57,7 +56,7 @@ function persist(): void {
 }
 
 function photoPath(id: string): string {
-  return dataFile(path.join(incomingDir(), `${id}.json`));
+  return dataFile(path.join(incomingDir(), `${id}.jpg`));
 }
 
 export function allItems(): QueuedMeal[] {
@@ -91,6 +90,51 @@ export function queueAdjust(day: string, feedback: string): { error?: string } {
       })
       .finally(() => {
         adjustJobs.set(user.id, Math.max(0, (adjustJobs.get(user.id) ?? 1) - 1));
+      }),
+  );
+  return {};
+}
+
+// ─── Single-entry "ask AI" from the Log tab ─────────────────────────────────
+// Same fire-and-forget shape as queueAdjust, scoped to one already-logged
+// entry instead of a whole day. Used to matter that this stayed off the HTTP
+// request: a synchronous call here used to sit behind whatever else was ahead
+// of it in the shared brain queue with only a 90s timer that didn't even start
+// ticking until its turn came — long enough to outlast the tunnel and strand a
+// paid-for brain call with nothing left to read the result.
+
+const reestimateJobs = new Map<string, ReestimateStatus>();
+
+export function reestimateStatus(entryId: string): ReestimateStatus {
+  return reestimateJobs.get(entryId) ?? { working: false, proposal: null, error: null };
+}
+
+export function clearReestimate(entryId: string): void {
+  reestimateJobs.delete(entryId);
+}
+
+export function queueReestimate(entryId: string, feedback: string): { error?: string } {
+  const entry = findEntry(entryId);
+  if (!entry) return { error: 'no such entry' };
+  if (reestimateStatus(entryId).working) return { error: 'already rethinking that one' };
+
+  const user = currentUser();
+  reestimateJobs.set(entryId, { working: true, proposal: null, error: null });
+  void runAs(user, () =>
+    reestimateEntry(entry.description, entry.values, feedback)
+      .then(({ values, assumptions }) => {
+        reestimateJobs.set(entryId, {
+          working: false,
+          proposal: { values, assumptions },
+          error: null,
+        });
+      })
+      .catch((err) => {
+        reestimateJobs.set(entryId, {
+          working: false,
+          proposal: null,
+          error: err instanceof Error ? err.message : 'could not rethink that',
+        });
       }),
   );
   return {};
@@ -135,7 +179,7 @@ export function queueText(description: string): QueuedMeal {
 
 export function queuePhoto(base64: string): QueuedMeal {
   const item = enqueue('photo', 'photograph', {}, 'working');
-  writePhotoJob(base64, photoPath(item.id), ['Meal: the photograph.']);
+  writePhotoFile(base64, photoPath(item.id));
   spawn(item.id);
   return item;
 }
@@ -159,7 +203,7 @@ export function fillItem(id: string, description?: string, base64?: string): Que
     item.assumptions = '';
     item.reason = null;
     item.status = 'working';
-    writePhotoJob(base64, photoPath(id), ['Meal: the photograph.']);
+    writePhotoFile(base64, photoPath(id));
   } else if (description && description.trim()) {
     item.source = 'text';
     item.description = description.trim();

@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { runGrok } from '../../grokQueue.js';
+import { runBrain } from '../../brainQueue.js';
 import {
   IMPLEMENTS,
   loadLadder,
@@ -19,7 +19,7 @@ import {
 import { rememberExercises } from './settings.js';
 
 /**
- * Planning a session by shelling out to Grok Build (`grok -p`) on the box.
+ * Planning a session by shelling out to the Claude CLI (`claude -p`) on the box.
  *
  * The same bargain the calorie estimator makes: the CLI runs on a subscription
  * that already exists, and the cost is several seconds and going dark the day
@@ -47,13 +47,12 @@ const TIMEOUT_MS = 120_000;
 const MAX_OUTPUT = 1024 * 1024;
 
 /** systemd gives the unit a minimal PATH, so the CLI has to be found by hand. */
-function resolveGrok(): string | null {
+function resolveClaude(): string | null {
   const candidates = [
-    process.env.ZIMADASH_GROK_BIN,
-    path.join(os.homedir(), '.local/bin/grok'),
-    path.join(os.homedir(), '.grok/bin/grok'),
-    '/usr/local/bin/grok',
-    '/opt/homebrew/bin/grok',
+    process.env.ZIMADASH_CLAUDE_BIN,
+    path.join(os.homedir(), '.local/bin/claude'),
+    '/usr/local/bin/claude',
+    '/opt/homebrew/bin/claude',
   ].filter((candidate): candidate is string => Boolean(candidate));
 
   for (const candidate of candidates) {
@@ -67,61 +66,101 @@ function resolveGrok(): string | null {
   return null;
 }
 
-/** An empty cwd so Grok does not walk up into the deploy tree and ingest this
- *  repo's AGENTS.md — or the brief — as project context. */
+/** An empty cwd so the brain does not walk up into the deploy tree and ingest
+ *  this repo's AGENTS.md — or the brief — as project context. */
 function scratchDir(): string {
   const dir = path.join(os.tmpdir(), 'zimadash-planner');
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
 
-/** `grok -p --output-format json` wraps the model's reply in `{ text }`. */
-function extractText(stdout: string): string {
+const AUTH_FAILURE_PATTERN =
+  /not logged in|login expired|please run \/login|invalid api key|failed to authenticate|authentication failed|unauthorized/i;
+
+interface ResultEnvelope {
+  result?: unknown;
+  is_error?: unknown;
+}
+
+/** `claude -p --output-format json` wraps a successful reply in
+ *  `{ result, is_error: false, ... }`. Exit code is 0 even on an internal
+ *  failure, so is_error is the real signal, not the process exit code. */
+function parseEnvelope(stdout: string): ResultEnvelope | null {
   const trimmed = stdout.trim();
-  if (!trimmed.startsWith('{')) return stdout;
+  if (!trimmed.startsWith('{')) return null;
   try {
-    const body = JSON.parse(trimmed) as { text?: unknown };
-    if (typeof body.text === 'string') return body.text;
+    return JSON.parse(trimmed) as ResultEnvelope;
   } catch {
-    /* the model itself replied with JSON; parse() will pick it out */
+    return null;
   }
-  return stdout;
+}
+
+function extractText(stdout: string): string {
+  const body = parseEnvelope(stdout);
+  if (!body) return stdout;
+  if (body.is_error === true) throw new Error('the planner did not respond');
+  return typeof body.result === 'string' ? body.result : stdout;
+}
+
+function failedAuth(stdout: string): boolean {
+  if (AUTH_FAILURE_PATTERN.test(stdout)) return true;
+  const body = parseEnvelope(stdout);
+  return typeof body?.result === 'string' && AUTH_FAILURE_PATTERN.test(body.result);
 }
 
 function run(prompt: string): Promise<string> {
-  const bin = resolveGrok();
+  const bin = resolveClaude();
   if (!bin) throw new Error('the planner is not available on this server');
 
-  const env = {
-    ...process.env,
-    GROK_DISABLE_AUTOUPDATER: '1',
-    GROK_MEMORY: '0',
-  };
-
-  return runGrok(
+  return runBrain(
     () =>
       new Promise<string>((resolve, reject) => {
-        execFile(
+        const child = execFile(
           bin,
           [
             '-p',
             prompt,
+            // No tools at all — this needs nothing it isn't given.
             '--tools',
             '',
-            '--no-subagents',
-            '--no-plan',
-            '--disable-web-search',
-            '--always-approve',
+            // 'sonnet' is a rolling alias to the latest Sonnet, not a pinned
+            // version — Opus is the account default and overkill for planning
+            // a session from context that's already fully spelled out.
+            '--model',
+            'sonnet',
+            '--permission-mode',
+            'bypassPermissions',
             '--output-format',
             'json',
-            '--verbatim',
-            '--cwd',
-            scratchDir(),
+            '--strict-mcp-config',
+            '--disable-slash-commands',
+            '--setting-sources',
+            '',
+            '--no-session-persistence',
           ],
-          { timeout: TIMEOUT_MS, maxBuffer: MAX_OUTPUT, killSignal: 'SIGKILL', env },
-          (err, stdout) =>
-            err ? reject(new Error('the planner did not respond')) : resolve(extractText(stdout)),
+          { cwd: scratchDir(), timeout: TIMEOUT_MS, maxBuffer: MAX_OUTPUT, killSignal: 'SIGKILL' },
+          (err, stdout) => {
+            if (failedAuth(stdout)) {
+              reject(new Error('the planner did not respond'));
+              return;
+            }
+            if (err) {
+              reject(new Error('the planner did not respond'));
+              return;
+            }
+            try {
+              resolve(extractText(stdout));
+            } catch (parseErr) {
+              reject(
+                parseErr instanceof Error ? parseErr : new Error('the planner did not respond'),
+              );
+            }
+          },
         );
+        // Verified live: claude -p reads whatever is available on stdin and
+        // folds it into the prompt. Nothing should ever reach the model but
+        // the prompt string, so stdin is closed rather than left open-unfed.
+        child.stdin?.end();
       }),
   );
 }
@@ -352,16 +391,6 @@ function parse(
   };
 }
 
-/** One plan at a time. Each call is a process, and a small box shouldn't be
- *  running two. */
-let queue: Promise<unknown> = Promise.resolve();
-
-function serialise<T>(work: () => Promise<T>): Promise<T> {
-  const next = queue.then(work, work);
-  queue = next.catch(() => undefined);
-  return next;
-}
-
 export function candidatesFor(
   type: SessionType,
   catalogue: ExerciseDef[],
@@ -422,16 +451,15 @@ export async function planWithModel(
   const candidates = candidatesFor(type, catalogue, inventory, history);
   const prompt = buildPrompt(type, policy, candidates, inventory);
 
-  const parsed = await serialise(async () => {
-    try {
-      return parse(await run(prompt), candidates, inventory, type);
-    } catch (first) {
-      // One retry — a malformed reply is usually a one-off, and twice in a row
-      // is a real problem that shouldn't cost another two minutes.
-      if (first instanceof Error && first.message === 'the planner did not respond') throw first;
-      return parse(await run(prompt), candidates, inventory, type);
-    }
-  });
+  let parsed: { exercises: Planned[]; reasoning: string };
+  try {
+    parsed = parse(await run(prompt), candidates, inventory, type);
+  } catch (first) {
+    // One retry — a malformed reply is usually a one-off, and twice in a row
+    // is a real problem that shouldn't cost another two minutes.
+    if (first instanceof Error && first.message === 'the planner did not respond') throw first;
+    parsed = parse(await run(prompt), candidates, inventory, type);
+  }
 
   rememberExercises(
     parsed.exercises.filter((planned) => planned.invented).map((planned) => planned.definition),
@@ -530,12 +558,10 @@ export async function explainExercise(
 ): Promise<{ setup: string; steps: string[]; watchFor: string[] }> {
   const prompt = buildGuidePrompt(definition, policy, loadLadder(inventory, definition.implement));
 
-  return serialise(async () => {
-    try {
-      return parseGuide(await run(prompt));
-    } catch (first) {
-      if (first instanceof Error && first.message === 'the planner did not respond') throw first;
-      return parseGuide(await run(prompt));
-    }
-  });
+  try {
+    return parseGuide(await run(prompt));
+  } catch (first) {
+    if (first instanceof Error && first.message === 'the planner did not respond') throw first;
+    return parseGuide(await run(prompt));
+  }
 }

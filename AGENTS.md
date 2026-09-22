@@ -223,37 +223,49 @@ a deliberate design choice and is not to be described in any tracked file.
 
 ## The estimator
 
-The calorie tracker shells out to Grok Build (`grok -p`) installed on the box,
-so it runs on a subscription that already exists rather than a metered API key.
-Capture is fire-and-forget: the phone queues the meal (photo, text, a number,
-or an Again chip) and can lock as soon as the server has the bytes. The brain
-runs in the background. **One Grok process on the box at a time** — calories,
-trainer, and inbox share a queue (`server/src/grokQueue.ts`). Never spawn it
-outside that queue, and never `setInterval` a delay longer than ~24 days
-(Node's timer is 32-bit; a "monthly" interval overflows and fires continuously).
-A number or an Again chip writes to the log immediately;
+The calorie tracker shells out to the Claude CLI (`claude -p`) installed on the
+box, so it runs on a subscription that already exists rather than a metered API
+key. Capture is fire-and-forget: the phone queues the meal (photo, text, a
+number, or an Again chip) and can lock as soon as the server has the bytes. The
+brain runs in the background. **One brain process on the box at a time** —
+calories, trainer, and inbox share a queue (`server/src/brainQueue.ts`). Never
+spawn it outside that queue, and never `setInterval` a delay longer than ~24
+days (Node's timer is 32-bit; a "monthly" interval overflows and fires
+continuously). A number or an Again chip writes to the log immediately;
 a photo or a sentence writes when the estimate lands. One adjustment box lets
-Grok rewrite whichever logged meal the sentence refers to; that runs in the
-background too, so you can still queue more meals while it processes.
+the brain rewrite whichever logged meal the sentence refers to; that runs in
+the background too, so you can still queue more meals while it processes. Every
+route that reaches the brain is fire-and-forget — nothing ever blocks an HTTP
+response on it, because a request queued behind another job can sit for
+minutes with only a 90-second timer that doesn't start ticking until its turn
+comes, which is exactly what used to outlast the tunnel on the old synchronous
+endpoints. Those are gone; a client polls a status route instead.
 
 Two rules:
 
-- **The tool grant is `web_search` only.** Search earns its place: a branded or
+- **The tool grant is `WebSearch` only.** Search earns its place: a branded or
   restaurant item gets looked up instead of guessed at, and the model skips it
   for ordinary food, so a normal estimate pays no latency for it. A photograph
-  is attached as an image block in the prompt (`grok --prompt-file`), not
-  opened with `read_file` — that extra tool round blew the ~100s Cloudflare
-  tunnel budget on the old synchronous path. **`web_fetch` is deliberately
-  excluded** — it would let a crafted description send this box to an arbitrary
-  URL, which search results do not.
+  is written to disk as a plain image file and the brain is granted `Read` and
+  told the path — there is no headless equivalent of an inline image block for
+  a one-shot `-p` call, so this costs one extra tool round, paid for by the
+  background queue rather than a synchronous request. **`WebFetch` is
+  deliberately excluded** — it would let a crafted description send this box to
+  an arbitrary URL, which search results do not. Every call also skips MCP
+  servers, skills, and project/user settings (`--strict-mcp-config
+--disable-slash-commands --setting-sources ''`) — none of that belongs in a
+  one-shot JSON extraction, and loading it would burn tokens for nothing. The
+  one thing that can't be suppressed without dropping subscription auth for a
+  metered key is the user-level `~/.claude/CLAUDE.md`, which still loads into
+  every call.
 - **A photograph is staged in `DATA_DIR` until the brain has read it**, then
   deleted. Same reason as the inbox: the upload _is_ the payload and has to
   survive a dead brain or a reboot mid-job. What lands in the log is the
-  model's name and numbers. The HTTP request never waits on Grok; the only
-  watchdog is 30 minutes (Grok's own default answer timeout). A hang stays
-  `working`. A real failure (auth, crash, unparseable reply, or that watchdog)
-  becomes an empty slot you fill with another photo or text — the meal is not
-  forgotten.
+  model's name and numbers. The HTTP request never waits on the brain; the only
+  watchdog is 30 minutes, chosen here rather than inherited from the CLI. A
+  hang stays `working`. A real failure (auth, crash, unparseable reply, or that
+  watchdog) becomes an empty slot you fill with another photo or text — the
+  meal is not forgotten.
 
 Replies are validated strictly — every configured field must come back as a
 plain number — with one retry, then an empty slot. There is deliberately no
@@ -261,7 +273,7 @@ fallback to logging a bare number when the estimator is down.
 
 ## The trainer
 
-The second tool to shell out to a model — also via `grok -p` — and the rules
+The second tool to shell out to a model — also via `claude -p` — and the rules
 differ from the estimator's in ways that matter.
 
 **The equipment generates everything.** Every achievable load is a subset sum
@@ -355,7 +367,7 @@ preference: swapping voices means removing the old one, or pinning with
 
 ## The inbox
 
-The third tool to shell out to a model — also via `grok -p` — and the first
+The third tool to shell out to a model — also via `claude -p` — and the first
 that writes outside `DATA_DIR`.
 
 **Owner only.** The tile, the route, and the API all refuse anyone who isn't
@@ -366,15 +378,16 @@ dash does not get a copy of that tree.
 pointed at `ZIMADASH_INBOX_ROOT` (no fallback, no default in code; guessing at
 a path on Joshua's filesystem is worse than refusing to run) and told to read
 `AGENTS.md` there first, the same way this file orients a coding agent in this
-repo. It explores with `list_dir` and `grep` from there, using the optional
-instructions text when Josh gave one. The systemd unit supplies the env var
-(`%h/inbox`) so a deploy cannot forget it.
+repo. It explores with `Glob` and `Grep` from there (there is no dedicated
+"list directory" tool, so `Glob` stands in), using the optional instructions
+text when Josh gave one. The systemd unit supplies the env var (`%h/inbox`) so
+a deploy cannot forget it.
 
-**Grant: `read_file,grep,list_dir`, nothing else.** Not write, not shell — the
+**Grant: `Read,Grep,Glob`, nothing else.** Not write, not shell — the
 model returns a decision (folder, filename, confidence, one sentence why), and
 the server performs the actual move. Same boundary as the trainer's weight
 snapping: the model chooses, code executes, and that boundary is what makes
-validating the chosen path worth doing. Not `web_search`/`web_fetch` — filing a
+validating the chosen path worth doing. Not `WebSearch`/`WebFetch` — filing a
 local file needs no network.
 
 **Staged in `DATA_DIR`, not `os.tmpdir()`.** Same reason as a queued meal

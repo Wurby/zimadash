@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { Entry, LogGrain, PendingEstimate, Settings } from '@shared/calories'
+import type { Entry, LogGrain, ReestimateStatus, Settings } from '@shared/calories'
 import {
   MONTH_LABELS,
   dayKeyFromMs,
@@ -12,11 +12,13 @@ import {
 import { Icon } from '../../components/Icon'
 import { usePolled } from '../../lib/refresh'
 import {
+  askReestimate,
+  clearReestimate,
   deleteEntry,
   getLogView,
+  getReestimate,
   queueDirect,
   patchEntry,
-  reestimateEntry,
   searchLog,
   tracked,
   type LogView,
@@ -123,7 +125,7 @@ function Row({
   const [busy, setBusy] = useState(false)
   const [asking, setAsking] = useState(false)
   const [prompt, setPrompt] = useState('')
-  const [proposal, setProposal] = useState<PendingEstimate | null>(null)
+  const [proposal, setProposal] = useState<ReestimateStatus['proposal']>(null)
   const [aiError, setAiError] = useState<string | null>(null)
 
   function startEdit() {
@@ -188,14 +190,25 @@ function Row({
     }
   }
 
+  // The brain call runs in the background — it shares one process with every
+  // other queued capture, so it's never worth blocking this request on it.
+  // Poll the status route until the proposal (or an error) lands.
   async function ask() {
     const said = prompt.trim()
     if (!said || busy) return
     setAiError(null)
     setBusy(true)
+    setPrompt('')
     try {
-      setProposal(await reestimateEntry(entry.id, said))
-      setPrompt('')
+      await askReestimate(entry.id, said)
+      let status: ReestimateStatus
+      do {
+        await new Promise((resolve) => setTimeout(resolve, 2000))
+        status = await getReestimate(entry.id)
+      } while (status.working)
+
+      if (status.error) setAiError(status.error)
+      else if (status.proposal) setProposal(status.proposal)
     } catch (err) {
       setAiError(err instanceof Error ? err.message : 'could not rethink that')
     } finally {
@@ -208,6 +221,7 @@ function Row({
     setBusy(true)
     try {
       await patchEntry(entry.id, proposal.values)
+      void clearReestimate(entry.id)
       setProposal(null)
       setAsking(false)
       onChanged()
@@ -309,7 +323,10 @@ function Row({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setProposal(null)}
+                  onClick={() => {
+                    void clearReestimate(entry.id)
+                    setProposal(null)
+                  }}
                   className="border-line hover:border-accent min-h-11 border px-3 text-xs"
                 >
                   Ask again

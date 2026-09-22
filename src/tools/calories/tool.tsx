@@ -15,8 +15,8 @@ import { WeightBar } from './WeightBar'
 /**
  * Calories — what you ate, and what it cost.
  *
- * Estimates come from Grok Build (`grok -p`) on the box. Capture queues on the
- * server so the phone can lock; numbers land in the log when the brain
+ * Estimates come from the Claude CLI (`claude -p`) on the box. Capture queues
+ * on the server so the phone can lock; numbers land in the log when the brain
  * finishes. Adjust the day in one sentence if something is wrong.
  */
 
