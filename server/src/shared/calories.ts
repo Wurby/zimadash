@@ -136,6 +136,10 @@ export interface DigestionEntry {
   /** Epoch ms. Defaults to now; editable after the fact. */
   at: number;
   severity: Severity;
+  /** False for a clock time that was made up (backfilled data with no real
+   *  time-of-day), so the daypart pattern doesn't read a synthesized time as a
+   *  real one. Absent means known — every entry logged live has a real time. */
+  timeKnown?: boolean;
 }
 
 /** How often a food preceded an episode within one lag bucket, among the

@@ -216,9 +216,29 @@ function EpisodeRow({ episode, onChanged }: { episode: DigestionEntry; onChanged
   )
 }
 
+function EpisodesChart({ range }: { range: RangeKey }) {
+  const data = usePolled('event-driven', () => getDigestionRange(range))
+
+  return (
+    <div className="mt-3">
+      {data.status === 'loading' && <p className="text-ink-dim text-sm">loading…</p>}
+      {data.status === 'error' && <p className="text-danger text-sm">{data.message}</p>}
+      {data.status === 'ok' && (
+        <Chart
+          label="Episodes per day"
+          color="#f75221"
+          goal={null}
+          unit=""
+          points={buildEpisodePoints(data.data)}
+          mode="bar"
+        />
+      )}
+    </div>
+  )
+}
+
 function EpisodesOverTime() {
   const [range, setRange] = useState<RangeKey>('fortnight')
-  const data = usePolled('event-driven', () => getDigestionRange(range))
 
   return (
     <div>
@@ -240,20 +260,7 @@ function EpisodesOverTime() {
         ))}
       </div>
 
-      <div className="mt-3">
-        {data.status === 'loading' && <p className="text-ink-dim text-sm">loading…</p>}
-        {data.status === 'error' && <p className="text-danger text-sm">{data.message}</p>}
-        {data.status === 'ok' && (
-          <Chart
-            label="Episodes per day"
-            color="#f75221"
-            goal={null}
-            unit=""
-            points={buildEpisodePoints(data.data)}
-            mode="bar"
-          />
-        )}
-      </div>
+      <EpisodesChart key={range} range={range} />
     </div>
   )
 }
@@ -372,21 +379,6 @@ export function DigestionTab() {
     <div className="space-y-6">
       <LogEpisode onLogged={refresh} />
 
-      <div>
-        {recent.status === 'loading' && <p className="text-ink-dim text-sm">loading…</p>}
-        {recent.status === 'error' && <p className="text-danger text-sm">{recent.message}</p>}
-        {recent.status === 'ok' &&
-          (recent.data.length === 0 ? (
-            <p className="text-ink-dim text-sm">Nothing logged yet.</p>
-          ) : (
-            <ul className="divide-line divide-y">
-              {recent.data.map((episode) => (
-                <EpisodeRow key={episode.id} episode={episode} onChanged={refresh} />
-              ))}
-            </ul>
-          ))}
-      </div>
-
       <section className="border-line bg-surface border px-4 py-3">
         <EpisodesOverTime />
       </section>
@@ -407,6 +399,22 @@ export function DigestionTab() {
           </>
         )}
       </section>
+
+      <div>
+        <p className="text-ink-dim mb-2 text-[0.65rem] font-medium tracking-wide uppercase">Log</p>
+        {recent.status === 'loading' && <p className="text-ink-dim text-sm">loading…</p>}
+        {recent.status === 'error' && <p className="text-danger text-sm">{recent.message}</p>}
+        {recent.status === 'ok' &&
+          (recent.data.length === 0 ? (
+            <p className="text-ink-dim text-sm">Nothing logged yet.</p>
+          ) : (
+            <ul className="divide-line divide-y">
+              {recent.data.map((episode) => (
+                <EpisodeRow key={episode.id} episode={episode} onChanged={refresh} />
+              ))}
+            </ul>
+          ))}
+      </div>
     </div>
   )
 }

@@ -43,9 +43,14 @@ function writeMonth(month: string, file: MonthFile): void {
   writeJson(fileFor(month), { ...file, version: VERSION });
 }
 
-export function addEpisode(severity: Severity, at: number = Date.now()): DigestionEntry {
+export function addEpisode(
+  severity: Severity,
+  at: number = Date.now(),
+  timeKnown = true,
+): DigestionEntry {
   const dayKey = dayKeyFromMs(at);
   const entry: DigestionEntry = { id: makeId(dayKey), at, severity };
+  if (!timeKnown) entry.timeKnown = false;
 
   const month = monthKey(dayKey);
   const file = readMonth(month);
@@ -68,7 +73,12 @@ export function updateEpisode(
   const entry: DigestionEntry = { ...file.entries[idx] };
 
   if (patch.severity !== undefined) entry.severity = patch.severity;
-  if (patch.at !== undefined) entry.at = patch.at;
+  // Hand-setting a time is an assertion that it's a real one, even if the
+  // episode originally came in with a made-up time.
+  if (patch.at !== undefined) {
+    entry.at = patch.at;
+    delete entry.timeKnown;
+  }
 
   const oldDayKey = dayKeyFromMs(file.entries[idx].at);
   const newDayKey = dayKeyFromMs(entry.at);

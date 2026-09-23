@@ -25,7 +25,9 @@ import { addEpisode } from '../src/tools/calories/digestion.js';
  *     12:30pm, dinner 6:30pm, snacks 3pm) so the same-day "before the
  *     episode" ordering in the suspects analysis has something to work with.
  *   - a "Yes" day gets one severity-2 episode at 8:30pm, since the note only
- *     ever recorded yes/no, never how bad.
+ *     ever recorded yes/no, never how bad. It's marked timeKnown: false so
+ *     the "by time of day" pattern doesn't read that made-up 8:30pm as a real
+ *     clock time and report every seeded episode as an evening one.
  *
  * Descriptions are normalized to the comma-separated ingredient-list format
  * the brain now produces (splitting on "," and "." so "yogurt, string
@@ -949,7 +951,7 @@ function main(): void {
             `[episode] ${day} ${EPISODE_HOUR}:${EPISODE_MINUTE}  severity ${EPISODE_SEVERITY}`,
           );
         } else {
-          addEpisode(EPISODE_SEVERITY, atOnDay(day, EPISODE_HOUR, EPISODE_MINUTE));
+          addEpisode(EPISODE_SEVERITY, atOnDay(day, EPISODE_HOUR, EPISODE_MINUTE), false);
         }
       }
     }

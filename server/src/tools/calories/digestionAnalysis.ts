@@ -101,7 +101,14 @@ function daypartOf(hour: number): number {
 }
 
 /** Raw counts — the client normalizes them relative to the busiest bucket so
- *  the bars read as a shape, not a number you have to parse. */
+ *  the bars read as a shape, not a number you have to parse.
+ *
+ * Weekday counts every episode: the day it happened is real even for
+ * backfilled data, since it comes from the journal date, not a guess. Daypart
+ * only counts episodes with a real clock time (`timeKnown !== false`) —
+ * backfilled entries carry a made-up time-of-day (see seed-digestion.ts),
+ * and counting those would just report back whatever synthetic hour was
+ * chosen at import time. */
 export function computePatterns(episodes: DigestionEntry[]): DigestionPatterns {
   const weekday = [0, 0, 0, 0, 0, 0, 0];
   const daypart = [0, 0, 0, 0];
@@ -111,7 +118,9 @@ export function computePatterns(episodes: DigestionEntry[]): DigestionPatterns {
     const [y, m, d] = day.split('-').map(Number);
     const weekdayIndex = new Date(y, m - 1, d, 12).getDay();
     weekday[weekdayIndex] += 1;
-    daypart[daypartOf(new Date(episode.at).getHours())] += 1;
+    if (episode.timeKnown !== false) {
+      daypart[daypartOf(new Date(episode.at).getHours())] += 1;
+    }
   }
 
   return { weekday, daypart };
