@@ -27,6 +27,7 @@ import {
   withEffectiveGoal,
 } from './api'
 import { CaloriesBar } from './CaloriesBar'
+import { DigestionQuickLog } from './DigestionQuickLog'
 import { WeightBar } from './WeightBar'
 import { Chart } from './Chart'
 import { buildPoints, rollingMean } from './points'
@@ -406,7 +407,12 @@ export function MainTab({ settings }: { settings: Settings | null }) {
 
   return (
     <div className="space-y-5">
-      <CaloriesBar totals={data?.totals ?? {}} fields={fields} />
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <CaloriesBar totals={data?.totals ?? {}} fields={fields} />
+        </div>
+        <DigestionQuickLog />
+      </div>
 
       {week.status === 'ok' && fields.length > 0 && (
         <WeekProgress
