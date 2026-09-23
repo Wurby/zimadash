@@ -1,6 +1,9 @@
 import { api } from '../../lib/api'
 import type {
   DaySummary,
+  DigestionEntry,
+  DigestionPatterns,
+  DigestionRangeData,
   Entry,
   Expenditure,
   FieldConfig,
@@ -10,6 +13,8 @@ import type {
   RangeKey,
   ReestimateStatus,
   Settings,
+  Severity,
+  Suspects,
   WeightReading,
 } from '@shared/calories'
 
@@ -173,13 +178,34 @@ export const getReestimate = (id: string) =>
 export const clearReestimate = (id: string) =>
   api<{ ok: true }>(`${BASE}/entries/${id}/reestimate`, { method: 'DELETE' })
 
-export const patchEntry = (id: string, values: Record<string, number>) =>
-  api<Entry>(`${BASE}/entries/${id}`, { method: 'PATCH', body: JSON.stringify({ values }) })
+export const patchEntry = (id: string, patch: { values?: Record<string, number>; at?: number }) =>
+  api<Entry>(`${BASE}/entries/${id}`, { method: 'PATCH', body: JSON.stringify(patch) })
 
 export const deleteEntry = (id: string) =>
   api<{ ok: true }>(`${BASE}/entries/${id}`, {
     method: 'DELETE',
   })
+
+// ─── Digestion ───────────────────────────────────────────────────────────────
+
+export const getRecentEpisodes = () =>
+  api<{ episodes: DigestionEntry[] }>(`${BASE}/digestion/recent`).then((r) => r.episodes)
+
+export const logEpisode = (severity: Severity) =>
+  api<DigestionEntry>(`${BASE}/digestion`, { method: 'POST', body: JSON.stringify({ severity }) })
+
+export const patchEpisode = (id: string, patch: { severity?: Severity; at?: number }) =>
+  api<DigestionEntry>(`${BASE}/digestion/${id}`, { method: 'PATCH', body: JSON.stringify(patch) })
+
+export const deleteEpisode = (id: string) =>
+  api<{ ok: true }>(`${BASE}/digestion/${id}`, { method: 'DELETE' })
+
+export const getSuspects = () => api<Suspects>(`${BASE}/digestion/suspects`)
+
+export const getDigestionPatterns = () => api<DigestionPatterns>(`${BASE}/digestion/patterns`)
+
+export const getDigestionRange = (range: RangeKey) =>
+  api<DigestionRangeData>(`${BASE}/digestion/range/${range}`)
 
 /** Fields still being tracked, in configured order. */
 export const tracked = (settings: Settings | null): FieldConfig[] =>

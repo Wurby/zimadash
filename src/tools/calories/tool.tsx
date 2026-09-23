@@ -5,6 +5,7 @@ import { defineTool } from '../types'
 import meta from './meta.json'
 import { getDay, getSettings, getWeight, tracked, withEffectiveGoal } from './api'
 import { CaloriesBar } from './CaloriesBar'
+import { DigestionTab } from './DigestionTab'
 import { MainTab } from './MainTab'
 import { ReportsTab } from './ReportsTab'
 import { LogTab } from './LogTab'
@@ -20,7 +21,7 @@ import { WeightBar } from './WeightBar'
  * finishes. Adjust the day in one sentence if something is wrong.
  */
 
-const TABS = ['Today', 'Weight', 'Reports', 'Log', 'Settings'] as const
+const TABS = ['Today', 'Weight', 'Reports', 'Log', 'Digestion', 'Settings'] as const
 type Tab = (typeof TABS)[number]
 
 function Tile() {
@@ -137,6 +138,7 @@ function View() {
         {tab === 'Log' && (
           <LogTab key={logDate ?? 'today'} settings={settings} openDate={logDate} />
         )}
+        {tab === 'Digestion' && <DigestionTab />}
         {tab === 'Settings' && <SettingsTab settings={settings} onSaved={setOverride} />}
       </div>
     </div>

@@ -25,6 +25,7 @@ import {
   type RecentMeal,
 } from './api'
 import { derivedCalories } from './macros'
+import { fromLocalDateTime, toLocalDateTime } from './time'
 
 /**
  * The meal history. Lands on today; breadcrumbs zoom to week, month, year.
@@ -120,6 +121,7 @@ function Row({
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState<Record<string, string>>({})
+  const [draftAt, setDraftAt] = useState('')
   const [confirming, setConfirming] = useState(false)
   const [adding, setAdding] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -137,6 +139,7 @@ function Row({
         ]),
       ),
     )
+    setDraftAt(toLocalDateTime(entry.at))
     setEditing(true)
   }
 
@@ -159,9 +162,11 @@ function Row({
         .map(([id, raw]) => [id, Number(raw)]),
     )
 
+    const at = draftAt ? fromLocalDateTime(draftAt) : entry.at
+
     setBusy(true)
     try {
-      await patchEntry(entry.id, values)
+      await patchEntry(entry.id, { values, at })
       setEditing(false)
       onChanged()
     } finally {
@@ -220,7 +225,7 @@ function Row({
     if (!proposal) return
     setBusy(true)
     try {
-      await patchEntry(entry.id, proposal.values)
+      await patchEntry(entry.id, { values: proposal.values })
       void clearReestimate(entry.id)
       setProposal(null)
       setAsking(false)
@@ -236,7 +241,16 @@ function Row({
         <p className="min-w-0 truncate text-sm font-medium">
           {entry.description || <span className="text-ink-dim italic">quick entry</span>}
         </p>
-        <span className="text-ink-dim shrink-0 font-mono text-xs tabular-nums">{when}</span>
+        {editing ? (
+          <input
+            type="datetime-local"
+            value={draftAt}
+            onChange={(e) => setDraftAt(e.target.value)}
+            className="border-line focus:border-accent shrink-0 border bg-transparent px-1.5 py-1 font-mono text-xs outline-none"
+          />
+        ) : (
+          <span className="text-ink-dim shrink-0 font-mono text-xs tabular-nums">{when}</span>
+        )}
       </div>
 
       {entry.assumptions && !editing && (

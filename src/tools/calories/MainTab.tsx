@@ -19,6 +19,7 @@ import {
   getRecent,
   getReview,
   getWeight,
+  patchEntry,
   queueDirect,
   queuePhoto,
   queueText,
@@ -29,6 +30,7 @@ import { CaloriesBar } from './CaloriesBar'
 import { WeightBar } from './WeightBar'
 import { Chart } from './Chart'
 import { buildPoints, rollingMean } from './points'
+import { toLocalTime, withLocalTime } from './time'
 import { WeekProgress } from './WeekProgress'
 
 /**
@@ -224,10 +226,19 @@ function EntryRow({
   onChanged: () => void
 }) {
   const [dropping, setDropping] = useState(false)
+  const [editingTime, setEditingTime] = useState(false)
+  const [timeDraft, setTimeDraft] = useState('')
   const kcal = Math.round(entry.values.calories ?? 0)
+  const when = new Date(entry.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
   async function drop() {
     await deleteEntry(entry.id)
+    onChanged()
+  }
+
+  async function saveTime() {
+    if (timeDraft) await patchEntry(entry.id, { at: withLocalTime(entry.at, timeDraft) })
+    setEditingTime(false)
     onChanged()
   }
 
@@ -262,7 +273,29 @@ function EntryRow({
         )}
       </div>
 
-      <div className="mt-2 flex justify-end">
+      <div className="mt-2 flex items-center justify-end gap-2">
+        {editingTime ? (
+          <input
+            type="time"
+            autoFocus
+            value={timeDraft}
+            onChange={(e) => setTimeDraft(e.target.value)}
+            onBlur={saveTime}
+            onKeyDown={(e) => e.key === 'Enter' && saveTime()}
+            className="border-line focus:border-accent mr-auto border bg-transparent px-1.5 py-1 font-mono text-xs outline-none"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              setTimeDraft(toLocalTime(entry.at))
+              setEditingTime(true)
+            }}
+            className="text-ink-dim hover:text-accent mr-auto font-mono text-xs tabular-nums"
+          >
+            {when}
+          </button>
+        )}
         <button
           type="button"
           disabled={busy}

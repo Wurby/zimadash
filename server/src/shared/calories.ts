@@ -125,6 +125,62 @@ export interface DaySummary {
   entries: Entry[];
 }
 
+// ─── Digestion ───────────────────────────────────────────────────────────────
+
+export type Severity = 1 | 2 | 3;
+
+/** One logged episode. No description — the analysis comes from matching it
+ *  against nearby meals, not from anything typed here. */
+export interface DigestionEntry {
+  id: string;
+  /** Epoch ms. Defaults to now; editable after the fact. */
+  at: number;
+  severity: Severity;
+}
+
+/** How often a food preceded an episode within one lag bucket, among the
+ *  meals it could have — a rate, not a raw count, so a food you eat daily
+ *  isn't just winning on volume. */
+export interface Suspect {
+  food: string;
+  /** How many times this food was eaten at all. */
+  times: number;
+  /** Of those, how many were followed by an episode in this bucket. */
+  matches: number;
+  rate: number;
+}
+
+export interface Suspects {
+  sameDay: Suspect[];
+  nextDay: Suspect[];
+  twoDaysOut: Suspect[];
+}
+
+export interface DigestionDay {
+  date: string;
+  count: number;
+  severities: Severity[];
+}
+
+export interface DigestionRangeWindow {
+  from: string;
+  to: string;
+  days: DigestionDay[];
+}
+
+export interface DigestionRangeData extends DigestionRangeWindow {
+  previous: DigestionRangeWindow;
+}
+
+/** Raw counts. The client does the relative scaling so the bars stay
+ *  comparative rather than absolute — see WeekdayRow's approach. */
+export interface DigestionPatterns {
+  /** Sunday first, matching Date#getDay(). */
+  weekday: number[];
+  /** Morning / afternoon / evening / night. */
+  daypart: number[];
+}
+
 // ─── Weight and the adaptive target ──────────────────────────────────────────
 
 export type LossRate = 1 | 1.5 | 2;

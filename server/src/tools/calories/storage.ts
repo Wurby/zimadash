@@ -71,18 +71,27 @@ export function findEntry(id: string): Entry | null {
   return readMonth(monthOfId(id)).entries.find((entry) => entry.id === id) ?? null;
 }
 
-export function patchEntry(id: string, values: Record<string, number>): Entry | null {
-  return updateEntry(id, { values });
-}
-
+/**
+ * Moving an entry's `at` across a day boundary makes its id's day prefix
+ * stale, since `findEntry`/`deleteEntry` both locate the file from that
+ * prefix. When the day changes, the entry is re-keyed under a fresh id in the
+ * target day's (and possibly month's) file — the caller gets the new id back
+ * and must use it from then on.
+ */
 export function updateEntry(
   id: string,
-  patch: { values?: Record<string, number>; description?: string; assumptions?: string },
+  patch: {
+    values?: Record<string, number>;
+    description?: string;
+    assumptions?: string;
+    at?: number;
+  },
 ): Entry | null {
   const month = monthOfId(id);
   const file = readMonth(month);
-  const entry = file.entries.find((candidate) => candidate.id === id);
-  if (!entry) return null;
+  const idx = file.entries.findIndex((candidate) => candidate.id === id);
+  if (idx === -1) return null;
+  const entry: Entry = { ...file.entries[idx] };
 
   if (patch.values) {
     entry.values = patch.values;
@@ -90,8 +99,25 @@ export function updateEntry(
   }
   if (patch.description !== undefined) entry.description = patch.description;
   if (patch.assumptions !== undefined) entry.assumptions = patch.assumptions;
+  if (patch.at !== undefined) entry.at = patch.at;
+
+  const oldDayKey = dayKeyFromMs(file.entries[idx].at);
+  const newDayKey = dayKeyFromMs(entry.at);
+  if (newDayKey === oldDayKey) {
+    file.entries[idx] = entry;
+    writeMonth(month, file);
+    return entry;
+  }
+
+  file.entries.splice(idx, 1);
   writeMonth(month, file);
-  return entry;
+
+  const moved: Entry = { ...entry, id: makeId(newDayKey) };
+  const newMonth = monthKey(newDayKey);
+  const targetFile = readMonth(newMonth);
+  targetFile.entries.push(moved);
+  writeMonth(newMonth, targetFile);
+  return moved;
 }
 
 export function deleteEntry(id: string): boolean {

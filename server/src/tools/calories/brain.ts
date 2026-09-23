@@ -208,12 +208,18 @@ ${image}${transcript.join('\n\n')}
 Reply with a single JSON object and nothing else — no prose, no code fence:
 
 {
-  "name": "<three or four words naming the meal>",
+  "name": "<comma-separated list of the meal's likely ingredients, lowercase, no portion words>",
   "values": {
 ${fields.map((f) => `    "${f.id}": <number>`).join(',\n')}
   },
   "assumptions": "<one short sentence: the portion size and ingredients you assumed>"
 }
+
+"name" is a plain ingredient list, not a dish name — "grilled chicken, alfredo
+sauce, parmesan, garlic bread, butter", not "chicken alfredo dinner" and not
+"an afternoon snack". List what's actually in it, not how much or when it was
+eaten; that framing belongs in "assumptions" instead. A branded or restaurant
+item can stay as itself if you don't know its components ("wendy's").
 
 Every key under "values" is required and must be a plain number, not a string
 and not a range. Estimate rather than refuse — an approximate number is the

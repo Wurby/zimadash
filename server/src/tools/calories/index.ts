@@ -2,7 +2,14 @@ import { Router } from 'express';
 import type { ServerTool } from '../registry.js';
 import { listUsers } from '../../auth.js';
 import { runAs } from '../../context.js';
-import type { DaySummary, Entry, LogGrain, LogSummary, Settings } from '../../shared/calories.js';
+import type {
+  DaySummary,
+  Entry,
+  LogGrain,
+  LogSummary,
+  Severity,
+  Settings,
+} from '../../shared/calories.js';
 import {
   RANGE_DAYS,
   endOfMonth,
@@ -23,10 +30,20 @@ import {
   deleteEntry,
   entriesForDay,
   entriesInRange,
-  patchEntry,
   searchEntries,
   shiftDayKey,
+  updateEntry,
+  allEntries,
 } from './storage.js';
+import {
+  addEpisode,
+  allEpisodes,
+  deleteEpisode,
+  episodesInRange,
+  recentEpisodes,
+  updateEpisode,
+} from './digestion.js';
+import { computePatterns, computeSuspects, digestionDays } from './digestionAnalysis.js';
 import { cachedChips, fallbackChips, startClusterLoop } from './clusters.js';
 import {
   adjustError,
@@ -429,17 +446,33 @@ router.delete('/entries/:id/reestimate', (req, res) => {
 
 router.patch('/entries/:id', (req, res) => {
   const values = req.body?.values as Record<string, number> | undefined;
-  if (!values || typeof values !== 'object') {
-    res.status(400).json({ error: 'values are required' });
+  const at = req.body?.at;
+
+  const patch: { values?: Record<string, number>; at?: number } = {};
+  if (values !== undefined) {
+    if (typeof values !== 'object') {
+      res.status(400).json({ error: 'values must be an object' });
+      return;
+    }
+    const clean: Record<string, number> = {};
+    for (const [key, value] of Object.entries(values)) {
+      if (typeof value === 'number' && Number.isFinite(value)) clean[key] = value;
+    }
+    patch.values = clean;
+  }
+  if (at !== undefined) {
+    if (typeof at !== 'number' || !Number.isFinite(at)) {
+      res.status(400).json({ error: 'at must be a timestamp' });
+      return;
+    }
+    patch.at = at;
+  }
+  if (patch.values === undefined && patch.at === undefined) {
+    res.status(400).json({ error: 'nothing to update' });
     return;
   }
 
-  const clean: Record<string, number> = {};
-  for (const [key, value] of Object.entries(values)) {
-    if (typeof value === 'number' && Number.isFinite(value)) clean[key] = value;
-  }
-
-  const entry = patchEntry(req.params.id, clean);
+  const entry = updateEntry(req.params.id, patch);
   if (!entry) {
     res.status(404).json({ error: 'no such entry' });
     return;
@@ -453,6 +486,103 @@ router.delete('/entries/:id', (req, res) => {
     return;
   }
   res.json({ ok: true });
+});
+
+// ─── Digestion ───────────────────────────────────────────────────────────────
+
+function parseSeverity(value: unknown): Severity | null {
+  return value === 1 || value === 2 || value === 3 ? value : null;
+}
+
+router.get('/digestion/recent', (_req, res) => {
+  res.json({ episodes: recentEpisodes(200) });
+});
+
+router.post('/digestion', (req, res) => {
+  const severity = parseSeverity(req.body?.severity);
+  if (!severity) {
+    res.status(400).json({ error: 'severity must be 1, 2, or 3' });
+    return;
+  }
+  const at =
+    typeof req.body?.at === 'number' && Number.isFinite(req.body.at) ? req.body.at : undefined;
+  res.json(addEpisode(severity, at));
+});
+
+router.patch('/digestion/:id', (req, res) => {
+  const patch: { severity?: Severity; at?: number } = {};
+
+  if (req.body?.severity !== undefined) {
+    const severity = parseSeverity(req.body.severity);
+    if (!severity) {
+      res.status(400).json({ error: 'severity must be 1, 2, or 3' });
+      return;
+    }
+    patch.severity = severity;
+  }
+  if (req.body?.at !== undefined) {
+    if (typeof req.body.at !== 'number' || !Number.isFinite(req.body.at)) {
+      res.status(400).json({ error: 'at must be a timestamp' });
+      return;
+    }
+    patch.at = req.body.at;
+  }
+  if (patch.severity === undefined && patch.at === undefined) {
+    res.status(400).json({ error: 'nothing to update' });
+    return;
+  }
+
+  const episode = updateEpisode(req.params.id, patch);
+  if (!episode) {
+    res.status(404).json({ error: 'no such episode' });
+    return;
+  }
+  res.json(episode);
+});
+
+router.delete('/digestion/:id', (req, res) => {
+  if (!deleteEpisode(req.params.id)) {
+    res.status(404).json({ error: 'no such episode' });
+    return;
+  }
+  res.json({ ok: true });
+});
+
+/** Ranked suspect foods, over the whole history — see digestionAnalysis.ts. */
+router.get('/digestion/suspects', (_req, res) => {
+  res.json(computeSuspects(allEntries(), allEpisodes()));
+});
+
+/** Raw weekday/daypart counts for the two relative-bar charts. */
+router.get('/digestion/patterns', (_req, res) => {
+  res.json(computePatterns(allEpisodes()));
+});
+
+/** Daily episode counts over a range, for the frequency chart. Same window
+ *  shape as /range/:range. */
+router.get('/digestion/range/:range', (req, res) => {
+  const range = req.params.range as RangeKey;
+  const days = RANGE_DAYS[range];
+  if (!days) {
+    res.status(400).json({ error: `unknown range "${req.params.range}"` });
+    return;
+  }
+
+  const today = dayKeyFor(Date.now());
+  const from = shiftDayKey(today, -(days - 1));
+  const prevTo = shiftDayKey(from, -1);
+  const prevFrom = shiftDayKey(prevTo, -(days - 1));
+
+  res.json({
+    from,
+    to: today,
+    days: digestionDays(episodesInRange(from, today)),
+    previous: {
+      from: prevFrom,
+      to: prevTo,
+      days: digestionDays(episodesInRange(prevFrom, prevTo)),
+    },
+  });
 });
 
 export function startCalories(): void {
