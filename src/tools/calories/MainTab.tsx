@@ -407,12 +407,7 @@ export function MainTab({ settings }: { settings: Settings | null }) {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <CaloriesBar totals={data?.totals ?? {}} fields={fields} />
-        </div>
-        <DigestionQuickLog />
-      </div>
+      <CaloriesBar totals={data?.totals ?? {}} fields={fields} />
 
       {week.status === 'ok' && fields.length > 0 && (
         <WeekProgress
@@ -436,38 +431,41 @@ export function MainTab({ settings }: { settings: Settings | null }) {
       )}
 
       <form onSubmit={submit}>
-        <div className="relative">
-          <input
-            ref={input}
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            disabled={capturing}
-            autoFocus
-            enterKeyHint="done"
-            placeholder="A number, or what you ate…"
-            className="border-line bg-surface focus:border-accent w-full border py-3.5 pr-14 pl-4 text-base outline-none disabled:opacity-50"
-          />
-          <input
-            ref={photoInput}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            hidden
-            onChange={(event) => {
-              const file = event.target.files?.[0]
-              event.target.value = ''
-              if (file) void fromPhoto(file)
-            }}
-          />
-          <button
-            type="button"
-            onClick={() => photoInput.current?.click()}
-            disabled={capturing}
-            aria-label="Photograph the meal instead"
-            className="text-ink-dim hover:text-accent absolute inset-y-0 right-0 grid w-14 place-items-center disabled:opacity-50"
-          >
-            <Icon name="camera" className="!h-6 !w-6" />
-          </button>
+        <div className="flex gap-2">
+          <div className="relative min-w-0 flex-1">
+            <input
+              ref={input}
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+              disabled={capturing}
+              autoFocus
+              enterKeyHint="done"
+              placeholder="A number, or what you ate…"
+              className="border-line bg-surface focus:border-accent w-full border py-3.5 pr-14 pl-4 text-base outline-none disabled:opacity-50"
+            />
+            <input
+              ref={photoInput}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              hidden
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                event.target.value = ''
+                if (file) void fromPhoto(file)
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => photoInput.current?.click()}
+              disabled={capturing}
+              aria-label="Photograph the meal instead"
+              className="text-ink-dim hover:text-accent absolute inset-y-0 right-0 grid w-14 place-items-center disabled:opacity-50"
+            >
+              <Icon name="camera" className="!h-6 !w-6" />
+            </button>
+          </div>
+          <DigestionQuickLog />
         </div>
         {capturing && (
           <p className="text-ink-dim mt-2 font-mono text-xs">queued — you can lock the phone</p>
