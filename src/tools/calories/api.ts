@@ -201,9 +201,16 @@ export const patchEpisode = (id: string, patch: { severity?: Severity; at?: numb
 export const deleteEpisode = (id: string) =>
   api<{ ok: true }>(`${BASE}/digestion/${id}`, { method: 'DELETE' })
 
-export const getSuspects = () => api<Suspects>(`${BASE}/digestion/suspects`)
+/** `'all'` is the whole history; a RangeKey limits it to the last N days. */
+export type DigestionWindow = RangeKey | 'all'
 
-export const getDigestionPatterns = () => api<DigestionPatterns>(`${BASE}/digestion/patterns`)
+const windowQuery = (window: DigestionWindow) => (window === 'all' ? '' : `?range=${window}`)
+
+export const getSuspects = (window: DigestionWindow) =>
+  api<Suspects>(`${BASE}/digestion/suspects${windowQuery(window)}`)
+
+export const getDigestionPatterns = (window: DigestionWindow) =>
+  api<DigestionPatterns>(`${BASE}/digestion/patterns${windowQuery(window)}`)
 
 export const getDigestionRange = (range: RangeKey) =>
   api<DigestionRangeData>(`${BASE}/digestion/range/${range}`)

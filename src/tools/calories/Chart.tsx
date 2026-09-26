@@ -99,6 +99,7 @@ export function Chart({
   onOpen,
   caption,
   legend,
+  baseline = 'zero',
 }: {
   points: Point[]
   color: string
@@ -118,6 +119,10 @@ export function Chart({
   caption?: string
   /** Backup encoding so a stacked series is never colour-only. */
   legend?: Array<{ color: string; label: string }>
+  /** 'fit' scales the axis to the data (plus goal and markers) instead of
+   *  from zero — for a quantity like body weight, where zero is a range the
+   *  line will never visit and the real movement flattens into the top. */
+  baseline?: 'zero' | 'fit'
 }) {
   const [hover, setHover] = useState<number | null>(null)
   const titleId = useId()
@@ -129,7 +134,17 @@ export function Chart({
   }
 
   const extra = (markers ?? []).map((marker) => marker.value)
-  const top = niceCeiling(Math.max(...values, goal ?? 0, ...extra))
+  const goalValue = goal !== null && goal > 0 ? [goal] : []
+  const spanValues = [...values, ...goalValue, ...extra]
+  let lo = 0
+  let top = niceCeiling(Math.max(...values, goal ?? 0, ...extra))
+  if (baseline === 'fit') {
+    const min = Math.min(...spanValues)
+    const max = Math.max(...spanValues)
+    const pad = Math.max((max - min) * 0.15, 1)
+    lo = Math.floor(min - pad)
+    top = Math.ceil(max + pad)
+  }
   const plotW = W - PAD.left - PAD.right
   const plotH = H - PAD.top - PAD.bottom
   const barW = (plotW / points.length) * 0.72
@@ -139,7 +154,7 @@ export function Chart({
     if (mode === 'bar') return PAD.left + ((i + 0.5) / points.length) * plotW
     return PAD.left + (i / (points.length - 1)) * plotW
   }
-  const y = (v: number) => PAD.top + plotH - (v / top) * plotH
+  const y = (v: number) => PAD.top + plotH - ((v - lo) / (top - lo)) * plotH
 
   const path = linePath(points, x, y)
   const trendPath = trend ? linePath(trend, x, y) : ''
@@ -147,7 +162,7 @@ export function Chart({
   const lines: Marker[] = [
     ...(goal !== null && goal > 0 ? [{ value: goal, label: `goal ${Math.round(goal)}` }] : []),
     ...(markers ?? []),
-  ].filter((line) => line.value > 0 && line.value <= top)
+  ].filter((line) => line.value > lo && line.value <= top)
   const labels = layoutLabels(lines, y)
 
   function locate(event: React.PointerEvent<SVGSVGElement>) {
@@ -259,9 +274,9 @@ export function Chart({
         {/* Recessive frame: a baseline and a top rule, nothing more. */}
         <line
           x1={PAD.left}
-          y1={y(0)}
+          y1={y(lo)}
           x2={W - PAD.right}
-          y2={y(0)}
+          y2={y(lo)}
           className="stroke-line"
           strokeWidth="1"
         />
@@ -282,8 +297,8 @@ export function Chart({
         >
           {top}
         </text>
-        <text x={PAD.left - 6} y={y(0)} textAnchor="end" className="fill-ink-dim text-[14px]">
-          0
+        <text x={PAD.left - 6} y={y(lo)} textAnchor="end" className="fill-ink-dim text-[14px]">
+          {lo}
         </text>
 
         {mode === 'bar' &&
@@ -291,7 +306,7 @@ export function Chart({
             if (p.value === null) return null
             const x0 = x(i) - barW / 2
             const topY = y(p.value)
-            const height = Math.max(0, y(0) - topY)
+            const height = Math.max(0, y(lo) - topY)
             const opacity = faint?.[i] ? 0.45 : 1
             const segments = stacks?.[i]
             if (!segments || segments.length === 0) {
@@ -313,7 +328,7 @@ export function Chart({
               <g key={p.date} opacity={opacity}>
                 {segments.map((segment, s) => {
                   const h = height * segment.share
-                  const ySeg = y(0) - acc - h
+                  const ySeg = y(lo) - acc - h
                   acc += h
                   return (
                     <rect
@@ -367,7 +382,7 @@ export function Chart({
             x1={x(hover!)}
             y1={PAD.top}
             x2={x(hover!)}
-            y2={y(0)}
+            y2={y(lo)}
             className="stroke-ink-dim"
             strokeWidth="1"
           />

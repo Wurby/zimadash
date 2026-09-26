@@ -18,6 +18,7 @@ import {
   getWeight,
   tracked,
   withEffectiveGoal,
+  type DigestionWindow,
   type WeightData,
 } from './api'
 import { Chart } from './Chart'
@@ -429,6 +430,7 @@ function WeightSection({ settings, data }: { settings: Settings | null; data: We
             color={TREND_COLOR}
             goal={config?.goalLb ?? null}
             unit="lb"
+            baseline="fit"
             points={trend.map((point) => ({ date: point.date, value: point.lb }))}
           />
         </section>
@@ -516,8 +518,8 @@ function RelativeBars({
 
 const DAYPARTS = ['Morning', 'Afternoon', 'Evening', 'Night']
 
-function DigestionPatternsSection() {
-  const data = usePolled('event-driven', getDigestionPatterns)
+function DigestionPatternsSection({ window }: { window: DigestionWindow }) {
+  const data = usePolled('event-driven', () => getDigestionPatterns(window))
 
   if (data.status === 'loading') return <p className="text-ink-dim text-sm">loading…</p>
   if (data.status === 'error') return <p className="text-danger text-sm">{data.message}</p>
@@ -572,48 +574,63 @@ function SuspectList({ title, suspects }: { title: string; suspects: Suspect[] }
   )
 }
 
+function SuspectsPanel({ window }: { window: DigestionWindow }) {
+  const suspects = usePolled('event-driven', () => getSuspects(window))
+
+  return (
+    <>
+      {suspects.status === 'loading' && <p className="text-ink-dim text-sm">loading…</p>}
+      {suspects.status === 'error' && <p className="text-danger text-sm">{suspects.message}</p>}
+      {suspects.status === 'ok' && (
+        <>
+          <SuspectList title="Same day" suspects={suspects.data.sameDay} />
+          <SuspectList title="Next day" suspects={suspects.data.nextDay} />
+          <SuspectList title="Two days out" suspects={suspects.data.twoDaysOut} />
+        </>
+      )}
+    </>
+  )
+}
+
+const WINDOWS: DigestionWindow[] = [...RANGES, 'all']
+
+/** One window governs the whole section — the chart, the patterns and the
+ *  suspects all describe the same stretch of time. "All" has no range of its
+ *  own for the chart, so it shows the last year. */
 function DigestionSection() {
-  const [range, setRange] = useState<RangeKey>('fortnight')
-  const suspects = usePolled('event-driven', getSuspects)
+  const [window, setWindow] = useState<DigestionWindow>('all')
 
   return (
     <div className="space-y-5">
+      <div className="flex flex-wrap gap-2">
+        {WINDOWS.map((key) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setWindow(key)}
+            aria-pressed={window === key}
+            className={`min-h-11 border px-3 text-sm ${
+              window === key
+                ? 'border-accent text-accent'
+                : 'border-line hover:border-accent bg-surface'
+            }`}
+          >
+            {key === 'all' ? 'All' : RANGE_LABELS[key]}
+          </button>
+        ))}
+      </div>
+
       <section className="border-line bg-surface border px-4 py-3">
-        <div className="flex flex-wrap gap-2">
-          {RANGES.map((key) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setRange(key)}
-              aria-pressed={range === key}
-              className={`min-h-11 border px-3 text-sm ${
-                range === key
-                  ? 'border-accent text-accent'
-                  : 'border-line hover:border-accent bg-surface'
-              }`}
-            >
-              {RANGE_LABELS[key]}
-            </button>
-          ))}
-        </div>
-        <EpisodesChart key={range} range={range} />
+        <EpisodesChart key={window} range={window === 'all' ? 'year' : window} />
       </section>
 
       <section className="border-line bg-surface border px-4 py-3">
-        <DigestionPatternsSection />
+        <DigestionPatternsSection key={window} window={window} />
       </section>
 
       <section className="border-line bg-surface space-y-5 border px-4 py-3">
         <p className="text-sm font-semibold tracking-tight">Suspected foods</p>
-        {suspects.status === 'loading' && <p className="text-ink-dim text-sm">loading…</p>}
-        {suspects.status === 'error' && <p className="text-danger text-sm">{suspects.message}</p>}
-        {suspects.status === 'ok' && (
-          <>
-            <SuspectList title="Same day" suspects={suspects.data.sameDay} />
-            <SuspectList title="Next day" suspects={suspects.data.nextDay} />
-            <SuspectList title="Two days out" suspects={suspects.data.twoDaysOut} />
-          </>
-        )}
+        <SuspectsPanel key={window} window={window} />
       </section>
     </div>
   )

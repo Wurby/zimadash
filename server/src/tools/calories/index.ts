@@ -557,14 +557,32 @@ router.delete('/digestion/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-/** Ranked suspect foods, over the whole history — see digestionAnalysis.ts. */
-router.get('/digestion/suspects', (_req, res) => {
-  res.json(computeSuspects(allEntries(), allEpisodes()));
+/** The last N days ending today, or null for the whole history. */
+function windowFromQuery(raw: unknown): { from: string; to: string } | null {
+  const days = typeof raw === 'string' ? RANGE_DAYS[raw as RangeKey] : undefined;
+  if (!days) return null;
+  const to = dayKeyFor(Date.now());
+  return { from: shiftDayKey(to, -(days - 1)), to };
+}
+
+/** Ranked suspect foods — see digestionAnalysis.ts. `?range=` limits both the
+ *  meals considered and the episodes matched to them; absent means all history. */
+router.get('/digestion/suspects', (req, res) => {
+  const window = windowFromQuery(req.query.range);
+  res.json(
+    window
+      ? computeSuspects(
+          entriesInRange(window.from, window.to),
+          episodesInRange(window.from, window.to),
+        )
+      : computeSuspects(allEntries(), allEpisodes()),
+  );
 });
 
-/** Raw weekday/daypart counts for the two relative-bar charts. */
-router.get('/digestion/patterns', (_req, res) => {
-  res.json(computePatterns(allEpisodes()));
+/** Raw weekday/daypart counts for the two relative-bar charts, same window rule. */
+router.get('/digestion/patterns', (req, res) => {
+  const window = windowFromQuery(req.query.range);
+  res.json(computePatterns(window ? episodesInRange(window.from, window.to) : allEpisodes()));
 });
 
 /** Daily episode counts over a range, for the frequency chart. Same window
