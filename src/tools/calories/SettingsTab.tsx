@@ -1,8 +1,10 @@
 import { useState } from 'react'
-import type { FieldConfig, Settings } from '@shared/calories'
+import type { FieldConfig, LossRate, Settings } from '@shared/calories'
 import { SWATCHES } from '@shared/calories'
-import { getWeight, putSettings } from './api'
+import { getWeight, putSettings, resetBaseline } from './api'
 import { usePolled } from '../../lib/refresh'
+
+const RATES: LossRate[] = [1, 1.5, 2]
 
 /**
  * What gets tracked, what it's called, what colour it is, and what you're
@@ -154,6 +156,7 @@ export function SettingsTab({
   const [draft, setDraft] = useState<Settings | null>(settings)
   const [busy, setBusy] = useState(false)
   const [newLabel, setNewLabel] = useState('')
+  const [confirmingBaseline, setConfirmingBaseline] = useState(false)
   // Above the early return: hooks can't sit behind a conditional.
   const weight = usePolled('event-driven', getWeight)
 
@@ -263,6 +266,84 @@ export function SettingsTab({
             onChange={(onMain) => update({ ...current, weight: { ...current.weight, onMain } })}
             label="Today tab"
           />
+        </div>
+      </div>
+
+      <div className="border-line bg-surface space-y-3 border p-3">
+        <span className="text-ink-dim text-[0.65rem] font-medium tracking-wide uppercase">
+          Weight goal
+        </span>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-sm">
+            <span className="text-ink-dim text-xs tracking-wide uppercase">Goal</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              defaultValue={current.weight.goalLb ?? ''}
+              onBlur={(event) =>
+                update({
+                  ...current,
+                  weight: {
+                    ...current.weight,
+                    goalLb: event.target.value === '' ? null : Number(event.target.value),
+                  },
+                })
+              }
+              placeholder="lb"
+              className="border-line focus:border-accent w-24 border bg-transparent px-2 py-1 font-mono text-sm outline-none"
+            />
+          </label>
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-ink-dim text-xs tracking-wide uppercase">Rate</span>
+            {RATES.map((rate) => (
+              <button
+                key={rate}
+                type="button"
+                onClick={() =>
+                  update({ ...current, weight: { ...current.weight, rateLbPerWeek: rate } })
+                }
+                aria-pressed={current.weight.rateLbPerWeek === rate}
+                className={`border px-2 py-1 font-mono text-xs ${
+                  current.weight.rateLbPerWeek === rate
+                    ? 'border-accent text-accent'
+                    : 'border-line hover:border-accent'
+                }`}
+              >
+                {rate}
+              </button>
+            ))}
+            <span className="text-ink-dim text-xs">lb/wk</span>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              if (!confirmingBaseline) {
+                setConfirmingBaseline(true)
+                return
+              }
+              setConfirmingBaseline(false)
+              void resetBaseline()
+                .then(onSaved)
+                .then(() => weight.refresh())
+            }}
+            onBlur={() => setConfirmingBaseline(false)}
+            className={`border px-3 py-1.5 text-xs ${
+              confirmingBaseline ? 'border-danger text-danger' : 'border-line hover:border-accent'
+            }`}
+          >
+            {confirmingBaseline ? 'Relearn from today?' : 'Reset to baseline'}
+          </button>
+          <p className="text-ink-dim text-xs">
+            Starts the expenditure maths again from today. Nothing is deleted.
+            {current.weight.baselineDate
+              ? ` Currently learning from ${current.weight.baselineDate}.`
+              : ''}
+          </p>
         </div>
       </div>
 

@@ -5,12 +5,10 @@ import { defineTool } from '../types'
 import meta from './meta.json'
 import { getDay, getSettings, getWeight, tracked, withEffectiveGoal } from './api'
 import { CaloriesBar } from './CaloriesBar'
-import { DigestionTab } from './DigestionTab'
 import { MainTab } from './MainTab'
 import { ReportsTab } from './ReportsTab'
 import { LogTab } from './LogTab'
 import { SettingsTab } from './SettingsTab'
-import { WeightTab } from './WeightTab'
 import { WeightBar } from './WeightBar'
 
 /**
@@ -21,7 +19,7 @@ import { WeightBar } from './WeightBar'
  * finishes. Adjust the day in one sentence if something is wrong.
  */
 
-const TABS = ['Today', 'Weight', 'Reports', 'Log', 'Digestion', 'Settings'] as const
+const TABS = ['Today', 'Reports', 'Log', 'Settings'] as const
 type Tab = (typeof TABS)[number]
 
 function Tile() {
@@ -113,14 +111,17 @@ function View() {
 
   return (
     <div>
-      <nav className="border-line flex gap-1 border-b" aria-label="Calories sections">
+      <nav
+        className="border-line flex gap-1 overflow-x-auto border-b"
+        aria-label="Calories sections"
+      >
         {TABS.map((name) => (
           <button
             key={name}
             type="button"
             onClick={() => openTab(name)}
             aria-current={tab === name ? 'page' : undefined}
-            className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+            className={`-mb-px shrink-0 border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
               tab === name
                 ? 'border-accent text-accent'
                 : 'hover:text-ink border-transparent text-ink-dim'
@@ -133,12 +134,10 @@ function View() {
 
       <div className="mt-6">
         {tab === 'Today' && <MainTab settings={settings} />}
-        {tab === 'Weight' && <WeightTab settings={settings} onSaved={setOverride} />}
         {tab === 'Reports' && <ReportsTab settings={settings} onOpenDay={openLogDay} />}
         {tab === 'Log' && (
           <LogTab key={logDate ?? 'today'} settings={settings} openDate={logDate} />
         )}
-        {tab === 'Digestion' && <DigestionTab />}
         {tab === 'Settings' && <SettingsTab settings={settings} onSaved={setOverride} />}
       </div>
     </div>

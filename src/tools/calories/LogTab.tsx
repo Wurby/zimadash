@@ -1,5 +1,12 @@
 import { useEffect, useState } from 'react'
-import type { Entry, LogGrain, ReestimateStatus, Settings } from '@shared/calories'
+import type {
+  DigestionEntry,
+  Entry,
+  LogGrain,
+  ReestimateStatus,
+  Settings,
+  Severity,
+} from '@shared/calories'
 import {
   MONTH_LABELS,
   dayKeyFromMs,
@@ -15,10 +22,14 @@ import {
   askReestimate,
   clearReestimate,
   deleteEntry,
+  deleteEpisode,
+  deleteWeight,
   getLogView,
   getReestimate,
+  patchEpisode,
   queueDirect,
   patchEntry,
+  putWeight,
   searchLog,
   tracked,
   type LogView,
@@ -26,6 +37,8 @@ import {
 } from './api'
 import { derivedCalories } from './macros'
 import { fromLocalDateTime, toLocalDateTime } from './time'
+
+const SEVERITIES: Severity[] = [1, 2, 3]
 
 /**
  * The meal history. Lands on today; breadcrumbs zoom to week, month, year.
@@ -454,6 +467,207 @@ function Row({
   )
 }
 
+function EpisodeRow({ episode, onChanged }: { episode: DigestionEntry; onChanged: () => void }) {
+  const [editing, setEditing] = useState(false)
+  const [draftSeverity, setDraftSeverity] = useState<Severity>(episode.severity)
+  const [draftAt, setDraftAt] = useState('')
+  const [confirming, setConfirming] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  const when = new Date(episode.at).toLocaleString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+
+  function startEdit() {
+    setDraftSeverity(episode.severity)
+    setDraftAt(toLocalDateTime(episode.at))
+    setEditing(true)
+  }
+
+  async function save() {
+    setBusy(true)
+    try {
+      await patchEpisode(episode.id, {
+        severity: draftSeverity,
+        at: draftAt ? fromLocalDateTime(draftAt) : episode.at,
+      })
+      setEditing(false)
+      onChanged()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function remove() {
+    setBusy(true)
+    try {
+      await deleteEpisode(episode.id)
+      onChanged()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <li className="px-1 py-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-danger min-w-0 truncate text-sm font-medium">💩 Digestive issue</p>
+        {editing ? (
+          <input
+            type="datetime-local"
+            value={draftAt}
+            onChange={(e) => setDraftAt(e.target.value)}
+            className="border-line focus:border-accent shrink-0 border bg-transparent px-1.5 py-1 font-mono text-xs outline-none"
+          />
+        ) : (
+          <span className="text-ink-dim shrink-0 font-mono text-xs tabular-nums">{when}</span>
+        )}
+      </div>
+
+      {editing ? (
+        <div className="mt-2 flex gap-2">
+          {SEVERITIES.map((severity) => (
+            <button
+              key={severity}
+              type="button"
+              onClick={() => setDraftSeverity(severity)}
+              aria-pressed={draftSeverity === severity}
+              className={`min-h-11 flex-1 border text-sm ${
+                draftSeverity === severity
+                  ? 'border-accent text-accent'
+                  : 'border-line hover:border-accent'
+              }`}
+            >
+              {severity}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="text-ink-dim mt-1 text-xs">severity {episode.severity}</p>
+      )}
+
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        {editing ? (
+          <>
+            <button
+              type="button"
+              onClick={save}
+              disabled={busy}
+              className="bg-accent min-h-11 px-3 text-xs font-medium text-slate-50 disabled:opacity-50 dark:text-slate-900"
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditing(false)}
+              className="border-line hover:border-accent min-h-11 border px-3 text-xs"
+            >
+              Cancel
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={startEdit}
+            className="border-line hover:border-accent min-h-11 border px-3 text-xs"
+          >
+            Edit
+          </button>
+        )}
+
+        <button
+          type="button"
+          onClick={() => (confirming ? void remove() : setConfirming(true))}
+          onBlur={() => setConfirming(false)}
+          disabled={busy}
+          className={`ml-auto min-h-11 border px-3 text-xs disabled:opacity-50 ${
+            confirming ? 'border-danger text-danger' : 'border-line hover:border-danger'
+          }`}
+        >
+          {confirming ? 'Tap again to delete' : 'Delete'}
+        </button>
+      </div>
+    </li>
+  )
+}
+
+function WeightLine({
+  date,
+  lb,
+  onChanged,
+}: {
+  date: string
+  lb: number | null
+  onChanged: () => void
+}) {
+  const [busy, setBusy] = useState(false)
+
+  async function save(next: number) {
+    if (!Number.isFinite(next) || next <= 0 || next === lb || busy) return
+    setBusy(true)
+    try {
+      await putWeight(date, next)
+      onChanged()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function remove() {
+    setBusy(true)
+    try {
+      await deleteWeight(date)
+      onChanged()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="border-line bg-surface flex items-center gap-2 border px-3 py-2">
+      <span className="text-ink-dim text-[0.65rem] font-medium tracking-wide uppercase">
+        Weight
+      </span>
+      <input
+        key={lb ?? 'empty'}
+        type="text"
+        inputMode="decimal"
+        defaultValue={lb ?? ''}
+        onBlur={(event) => void save(Number(event.target.value))}
+        onKeyDown={(event) => event.key === 'Enter' && event.currentTarget.blur()}
+        disabled={busy}
+        placeholder="lb"
+        className="border-line focus:border-accent ml-auto w-20 border bg-transparent px-2 py-1 text-right font-mono text-sm outline-none disabled:opacity-50"
+      />
+      {lb !== null && (
+        <button
+          type="button"
+          onClick={remove}
+          disabled={busy}
+          aria-label="Delete this weigh-in"
+          className="text-ink-dim hover:text-danger text-xs disabled:opacity-50"
+        >
+          ×
+        </button>
+      )}
+    </div>
+  )
+}
+
+type LogItem = { kind: 'meal'; entry: Entry } | { kind: 'episode'; episode: DigestionEntry }
+
+function mergedItems(view: LogView): LogItem[] {
+  return [
+    ...view.entries.map((entry): LogItem => ({ kind: 'meal', entry })),
+    ...view.episodes.map((episode): LogItem => ({ kind: 'episode', episode })),
+  ].sort((a, b) => {
+    const atA = a.kind === 'meal' ? a.entry.at : a.episode.at
+    const atB = b.kind === 'meal' ? b.entry.at : b.episode.at
+    return atB - atA
+  })
+}
+
 function Calendar({
   view,
   onPickDay,
@@ -643,16 +857,33 @@ function LogPane({
         </div>
       )}
 
-      {grain === 'day' && data.entries.length === 0 && (
-        <p className="text-ink-dim text-sm">Nothing logged this day.</p>
-      )}
+      {grain === 'day' && (
+        <>
+          <WeightLine date={data.date} lb={data.weightLb} onChanged={view.refresh} />
 
-      {grain === 'day' && data.entries.length > 0 && (
-        <ul className="divide-line divide-y">
-          {data.entries.map((entry) => (
-            <Row key={entry.id} entry={entry} fields={fields} onChanged={view.refresh} />
-          ))}
-        </ul>
+          {data.entries.length === 0 && data.episodes.length === 0 ? (
+            <p className="text-ink-dim text-sm">Nothing logged this day.</p>
+          ) : (
+            <ul className="divide-line divide-y">
+              {mergedItems(data).map((item) =>
+                item.kind === 'meal' ? (
+                  <Row
+                    key={item.entry.id}
+                    entry={item.entry}
+                    fields={fields}
+                    onChanged={view.refresh}
+                  />
+                ) : (
+                  <EpisodeRow
+                    key={item.episode.id}
+                    episode={item.episode}
+                    onChanged={view.refresh}
+                  />
+                ),
+              )}
+            </ul>
+          )}
+        </>
       )}
     </div>
   )

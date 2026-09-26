@@ -40,7 +40,6 @@ import {
   allEpisodes,
   deleteEpisode,
   episodesInRange,
-  recentEpisodes,
   updateEpisode,
 } from './digestion.js';
 import { computePatterns, computeSuspects, digestionDays } from './digestionAnalysis.js';
@@ -299,7 +298,18 @@ router.get('/log', (req, res) => {
     typeof req.query.date === 'string' && DATE_RE.test(req.query.date) ? req.query.date : today;
   const { from, to } = windowFor(grain, date);
   const entries = entriesInRange(from, to);
-  const loggedDays = [...new Set(entries.map((entry) => dayKeyFor(entry.at)))].sort();
+  const episodes = episodesInRange(from, to);
+  const readings = allReadings().filter((reading) => reading.date >= from && reading.date <= to);
+
+  // A day can be "logged" by a weigh-in or an episode with no meal at all, so
+  // the calendar's dots have to union all three rather than reading meals only.
+  const loggedDays = [
+    ...new Set([
+      ...entries.map((entry) => dayKeyFor(entry.at)),
+      ...episodes.map((episode) => dayKeyFor(episode.at)),
+      ...readings.map((reading) => reading.date),
+    ]),
+  ].sort();
 
   res.json({
     grain,
@@ -310,6 +320,9 @@ router.get('/log', (req, res) => {
     summary: summarise(entries),
     totals: totalsFor(entries),
     entries: grain === 'day' ? [...entries].reverse() : [],
+    episodes: grain === 'day' ? [...episodes].reverse() : [],
+    weightLb:
+      grain === 'day' ? (readings.find((reading) => reading.date === date)?.lb ?? null) : null,
     pills: grain === 'week' ? latestPills(entries) : [],
     loggedDays,
     loggedMonths: [...new Set(loggedDays.map((day) => monthKey(day)))],
@@ -493,10 +506,6 @@ router.delete('/entries/:id', (req, res) => {
 function parseSeverity(value: unknown): Severity | null {
   return value === 1 || value === 2 || value === 3 ? value : null;
 }
-
-router.get('/digestion/recent', (_req, res) => {
-  res.json({ episodes: recentEpisodes(200) });
-});
 
 router.post('/digestion', (req, res) => {
   const severity = parseSeverity(req.body?.severity);

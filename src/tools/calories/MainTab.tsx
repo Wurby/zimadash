@@ -29,6 +29,7 @@ import {
 import { CaloriesBar } from './CaloriesBar'
 import { DigestionQuickLog } from './DigestionQuickLog'
 import { WeightBar } from './WeightBar'
+import { WeightQuickLog } from './WeightQuickLog'
 import { Chart } from './Chart'
 import { buildPoints, rollingMean } from './points'
 import { toLocalTime, withLocalTime } from './time'
@@ -422,13 +423,18 @@ export function MainTab({ settings }: { settings: Settings | null }) {
         />
       )}
 
-      {settings?.weight.onMain && weight.status === 'ok' && (
-        <WeightBar
-          settings={settings.weight}
-          expenditure={weight.data.expenditure}
-          startLb={weight.data.trend[0]?.lb ?? null}
-        />
-      )}
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          {settings?.weight.onMain && weight.status === 'ok' && (
+            <WeightBar
+              settings={settings.weight}
+              expenditure={weight.data.expenditure}
+              startLb={weight.data.trend[0]?.lb ?? null}
+            />
+          )}
+        </div>
+        <WeightQuickLog onLogged={() => weight.refresh()} />
+      </div>
 
       <form onSubmit={submit}>
         <div className="flex gap-2">

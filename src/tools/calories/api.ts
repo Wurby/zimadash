@@ -98,6 +98,10 @@ export interface LogView {
   summary: LogSummary
   totals: Record<string, number>
   entries: Entry[]
+  /** Day grain only — empty for week/month/year. */
+  episodes: DigestionEntry[]
+  /** Day grain only — that day's weigh-in, or null. */
+  weightLb: number | null
   pills: RecentMeal[]
   loggedDays: string[]
   loggedMonths: string[]
@@ -187,9 +191,6 @@ export const deleteEntry = (id: string) =>
   })
 
 // ─── Digestion ───────────────────────────────────────────────────────────────
-
-export const getRecentEpisodes = () =>
-  api<{ episodes: DigestionEntry[] }>(`${BASE}/digestion/recent`).then((r) => r.episodes)
 
 export const logEpisode = (severity: Severity) =>
   api<DigestionEntry>(`${BASE}/digestion`, { method: 'POST', body: JSON.stringify({ severity }) })

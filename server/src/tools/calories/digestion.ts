@@ -138,14 +138,3 @@ export function episodesInRange(fromDay: string, toDay: string): DigestionEntry[
     })
     .sort((a, b) => a.at - b.at);
 }
-
-/** Newest first — the flat recent-episodes list on the Digestion tab. */
-export function recentEpisodes(limit: number): DigestionEntry[] {
-  const reversed = [...months()].reverse();
-  const found: DigestionEntry[] = [];
-  for (const month of reversed) {
-    found.push(...readMonth(month).entries);
-    if (found.length >= limit) break;
-  }
-  return found.sort((a, b) => b.at - a.at).slice(0, limit);
-}
