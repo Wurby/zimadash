@@ -12,6 +12,7 @@ import type {
 } from '../../shared/calories.js';
 import {
   RANGE_DAYS,
+  daysBetween,
   endOfMonth,
   endOfWeek,
   endOfYear,
@@ -569,14 +570,26 @@ function windowFromQuery(raw: unknown): { from: string; to: string } | null {
  *  meals considered and the episodes matched to them; absent means all history. */
 router.get('/digestion/suspects', (req, res) => {
   const window = windowFromQuery(req.query.range);
-  res.json(
-    window
-      ? computeSuspects(
-          entriesInRange(window.from, window.to),
-          episodesInRange(window.from, window.to),
-        )
-      : computeSuspects(allEntries(), allEpisodes()),
-  );
+  if (window) {
+    res.json(
+      computeSuspects(
+        entriesInRange(window.from, window.to),
+        episodesInRange(window.from, window.to),
+        RANGE_DAYS[req.query.range as RangeKey],
+      ),
+    );
+    return;
+  }
+
+  // "All" spans from the first thing ever logged, so the servings floor
+  // grows as the history does.
+  const meals = allEntries();
+  const episodes = allEpisodes();
+  const first = Math.min(meals[0]?.at ?? Infinity, episodes[0]?.at ?? Infinity);
+  const days = Number.isFinite(first)
+    ? daysBetween(dayKeyFor(first), dayKeyFor(Date.now())) + 1
+    : 1;
+  res.json(computeSuspects(meals, episodes, days));
 });
 
 /** Raw weekday/daypart counts for the two relative-bar charts, same window rule. */

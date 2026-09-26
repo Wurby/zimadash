@@ -550,18 +550,31 @@ function DigestionPatternsSection({ window }: { window: DigestionWindow }) {
   )
 }
 
-function SuspectList({ title, suspects }: { title: string; suspects: Suspect[] }) {
+function SuspectList({
+  title,
+  suspects,
+  solidTimes,
+}: {
+  title: string
+  suspects: Suspect[]
+  solidTimes: number
+}) {
   return (
     <div>
       <p className="text-ink-dim mb-2 text-[0.65rem] font-medium tracking-wide uppercase">
         {title}
       </p>
       {suspects.length === 0 ? (
-        <p className="text-ink-dim text-sm">Not enough data yet.</p>
+        <p className="text-ink-dim text-sm">Nothing eaten twice ahead of an episode.</p>
       ) : (
         <ul className="divide-line divide-y">
           {suspects.map((suspect) => (
-            <li key={suspect.food} className="flex items-baseline justify-between gap-3 py-2">
+            <li
+              key={suspect.food}
+              className={`flex items-baseline justify-between gap-3 py-2 ${
+                suspect.times < solidTimes ? 'opacity-60' : ''
+              }`}
+            >
               <span className="min-w-0 truncate text-sm">{suspect.food}</span>
               <span className="text-ink-dim shrink-0 font-mono text-xs tabular-nums">
                 {Math.round(suspect.rate * 100)}% · {suspect.matches}/{suspect.times}
@@ -583,9 +596,26 @@ function SuspectsPanel({ window }: { window: DigestionWindow }) {
       {suspects.status === 'error' && <p className="text-danger text-sm">{suspects.message}</p>}
       {suspects.status === 'ok' && (
         <>
-          <SuspectList title="Same day" suspects={suspects.data.sameDay} />
-          <SuspectList title="Next day" suspects={suspects.data.nextDay} />
-          <SuspectList title="Two days out" suspects={suspects.data.twoDaysOut} />
+          <SuspectList
+            title="Same day"
+            suspects={suspects.data.sameDay}
+            solidTimes={suspects.data.solidTimes}
+          />
+          <SuspectList
+            title="Next day"
+            suspects={suspects.data.nextDay}
+            solidTimes={suspects.data.solidTimes}
+          />
+          <SuspectList
+            title="Two days out"
+            suspects={suspects.data.twoDaysOut}
+            solidTimes={suspects.data.solidTimes}
+          />
+          <p className="text-ink-dim text-[0.65rem]">
+            In this window a food needs at least {suspects.data.minTimes} servings to be listed;
+            rows under {suspects.data.solidTimes} are dimmed — treat them as a hint. Ordered by how
+            sure the numbers can be, not just the percentage.
+          </p>
         </>
       )}
     </>

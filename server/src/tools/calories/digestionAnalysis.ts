@@ -17,12 +17,66 @@ import { dayKeyFromMs, shiftDayKey } from '../../shared/calories.js';
  * the way the Again-chip grouping already clusters meal names.
  *
  * Ranked by rate, not raw count, so a food eaten almost every day doesn't win
- * just by being on the plate constantly. A floor of five servings keeps a
- * single coincidence from reading as a 100% suspect.
+ * just by being on the plate constantly. Rate alone would let a food eaten
+ * twice and followed twice outrank one followed 8 of 10 times, so the order
+ * is the lower bound of the rate's confidence interval instead: small samples
+ * sink until they've earned their spot, which is what lets a short window
+ * show something without the list being led by coincidences.
+ *
+ * A food needs at least one match — a suspect that never preceded an episode
+ * isn't one — and a number of servings that follows the Fibonacci sequence up
+ * the window ladder: 1 across a week, then 1, 2, 3, 5 and 8 for two weeks, a
+ * month, a quarter, half a year and a year. Rows are marked thin until they
+ * clear the number two steps further up.
  */
 
-const MIN_TIMES = 5;
 const TOP_N = 12;
+
+// The named windows, in days. "All" is placed on the same ladder by its length.
+const LADDER = [7, 14, 30, 91, 182, 365];
+
+/** Where a window of this many days sits on the ladder: 0 for a week, 5 for a
+ *  year, fractional in between, and one more per doubling past a year. */
+function ladderPosition(days: number): number {
+  if (days <= LADDER[0]) return 0;
+  for (let i = 1; i < LADDER.length; i += 1) {
+    if (days <= LADDER[i]) {
+      const from = Math.log(LADDER[i - 1]);
+      return i - 1 + (Math.log(days) - from) / (Math.log(LADDER[i]) - from);
+    }
+  }
+  return LADDER.length - 1 + Math.log2(days / LADDER[LADDER.length - 1]);
+}
+
+/** 1, 1, 2, 3, 5, 8, 13… by position, blended between whole positions so a
+ *  window that sits between two rungs (the ever-growing "all") lands between
+ *  their numbers rather than jumping. */
+function fibonacciAt(position: number): number {
+  const at = (n: number): number => {
+    let [a, b] = [1, 1];
+    for (let i = 0; i < n; i += 1) [a, b] = [b, a + b];
+    return a;
+  };
+  const whole = Math.floor(position);
+  return Math.round(at(whole) + (position - whole) * (at(whole + 1) - at(whole)));
+}
+
+function minTimesFor(windowDays: number): number {
+  return fibonacciAt(ladderPosition(windowDays));
+}
+
+function solidTimesFor(windowDays: number): number {
+  return fibonacciAt(ladderPosition(windowDays) + 2);
+}
+
+/** Wilson score lower bound, 95%. */
+function lowerBound(hits: number, n: number): number {
+  const z = 1.96;
+  const p = hits / n;
+  const centre = p + (z * z) / (2 * n);
+  const margin = z * Math.sqrt((p * (1 - p) + (z * z) / (4 * n)) / n);
+  return (centre - margin) / (1 + (z * z) / n);
+}
 
 function foodsIn(description: string): string[] {
   return [
@@ -35,18 +89,25 @@ function foodsIn(description: string): string[] {
   ];
 }
 
-function rankSuspects(times: Map<string, number>, matches: Map<string, number>): Suspect[] {
+function rankSuspects(
+  times: Map<string, number>,
+  matches: Map<string, number>,
+  minTimes: number,
+): Suspect[] {
   return [...times.entries()]
-    .filter(([, n]) => n >= MIN_TIMES)
-    .map(([food, n]) => {
-      const hit = matches.get(food) ?? 0;
-      return { food, times: n, matches: hit, rate: hit / n };
-    })
-    .sort((a, b) => b.rate - a.rate || b.times - a.times)
+    .map(([food, n]) => ({ food, n, hit: matches.get(food) ?? 0 }))
+    .filter(({ n, hit }) => n >= minTimes && hit > 0)
+    .sort((a, b) => lowerBound(b.hit, b.n) - lowerBound(a.hit, a.n) || b.n - a.n)
+    .map(({ food, n, hit }): Suspect => ({ food, times: n, matches: hit, rate: hit / n }))
     .slice(0, TOP_N);
 }
 
-export function computeSuspects(meals: Entry[], episodes: DigestionEntry[]): Suspects {
+export function computeSuspects(
+  meals: Entry[],
+  episodes: DigestionEntry[],
+  windowDays: number,
+): Suspects {
+  const minTimes = minTimesFor(windowDays);
   const episodesByDay = new Map<string, number[]>();
   for (const episode of episodes) {
     const day = dayKeyFromMs(episode.at);
@@ -82,9 +143,11 @@ export function computeSuspects(meals: Entry[], episodes: DigestionEntry[]): Sus
   }
 
   return {
-    sameDay: rankSuspects(times, matchesSame),
-    nextDay: rankSuspects(times, matchesNext),
-    twoDaysOut: rankSuspects(times, matchesTwo),
+    minTimes,
+    solidTimes: solidTimesFor(windowDays),
+    sameDay: rankSuspects(times, matchesSame, minTimes),
+    nextDay: rankSuspects(times, matchesNext, minTimes),
+    twoDaysOut: rankSuspects(times, matchesTwo, minTimes),
   };
 }
 

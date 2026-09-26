@@ -155,6 +155,10 @@ export interface Suspect {
 }
 
 export interface Suspects {
+  /** Fewest servings a food needs to be listed — scales with the window. */
+  minTimes: number;
+  /** Servings at which a row stops being a hint and counts as evidence. */
+  solidTimes: number;
   sameDay: Suspect[];
   nextDay: Suspect[];
   twoDaysOut: Suspect[];
