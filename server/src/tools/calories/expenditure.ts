@@ -35,6 +35,49 @@ const WINDOW_DAYS = 28;
  */
 const ALPHA = 0.25;
 
+/**
+ * Recency weighting for the burn/rate estimate, separate from ALPHA above and
+ * applied to the raw daily readings, not the already-smoothed trend line —
+ * stacking this on top of the EWMA just re-blurs a real change a second time,
+ * since the trend line has already dragged a fresh reading two-thirds of the
+ * way back toward the old weight by the time this would see it. A weighted
+ * regression on the raw readings does its own noise-smoothing through the
+ * fit itself, so it doesn't need pre-smoothed input.
+ *
+ * Without this, a month spent flat at one weight and then a real drop in the
+ * last few days gets averaged into one straight line across the whole window
+ * and the drop barely registers. A 10-day half-life makes the last week or so
+ * count clearly more without letting a single reading swing the number: a day
+ * 10 days old still carries half the weight of today, a day 28 old still
+ * carries about a seventh — a nudge toward "what just happened," not a hard
+ * cutoff.
+ */
+const RECENCY_HALF_LIFE_DAYS = 10;
+
+function recencyWeight(date: string, latest: string): number {
+  return 0.5 ** (daysBetween(date, latest) / RECENCY_HALF_LIFE_DAYS);
+}
+
+/** Weighted least-squares slope of y against day-offset from `origin`. */
+function weightedSlope(
+  points: { date: string; value: number }[],
+  weights: number[],
+  origin: string,
+): number {
+  const xs = points.map((p) => daysBetween(origin, p.date));
+  const sw = weights.reduce((sum, w) => sum + w, 0);
+  const xbar = xs.reduce((sum, x, i) => sum + weights[i] * x, 0) / sw;
+  const ybar = points.reduce((sum, p, i) => sum + weights[i] * p.value, 0) / sw;
+
+  let num = 0;
+  let den = 0;
+  xs.forEach((x, i) => {
+    num += weights[i] * (x - xbar) * (points[i].value - ybar);
+    den += weights[i] * (x - xbar) ** 2;
+  });
+  return den === 0 ? 0 : num / den;
+}
+
 /** Below this many days there is no distribution worth reasoning about. */
 const OUTLIER_MIN_SAMPLE = 10;
 
@@ -142,16 +185,31 @@ export function computeExpenditure(
     return { ...empty, daysNeeded: MIN_DAYS - counted.length, trendLb: latestTrend, excluded };
   }
 
-  const avgIntake = counted.reduce((sum, kcal) => sum + kcal, 0) / counted.length;
   const span = daysBetween(trend[0].date, trend[trend.length - 1].date);
   if (span <= 0) return { ...empty, trendLb: latestTrend, excluded };
 
-  const changeLb = trend[trend.length - 1].lb - trend[0].lb;
+  const latestDate = trend[trend.length - 1].date;
+  const countedDates = paired
+    .filter((point) => !isUnderLogged(intakeByDay.get(point.date)!))
+    .map((point) => point.date);
+  const intakeWeights = countedDates.map((date) => recencyWeight(date, latestDate));
+  const sumIntakeWeights = intakeWeights.reduce((sum, w) => sum + w, 0);
+  const avgIntake =
+    counted.reduce((sum, kcal, i) => sum + kcal * intakeWeights[i], 0) / sumIntakeWeights;
+
+  // inWindow and trend are the same days in the same order — inWindow just
+  // hasn't had the EWMA applied, which is exactly what the regression wants.
+  const rawWeights = inWindow.map((point) => recencyWeight(point.date, latestDate));
+  const slopePerDay = weightedSlope(
+    inWindow.map((point) => ({ date: point.date, value: point.lb })),
+    rawWeights,
+    inWindow[0].date,
+  );
 
   // Losing weight means the deficit is energy you burned but didn't eat, so it
   // adds to expenditure. Gaining means the opposite.
-  const tdee = Math.round(avgIntake - (changeLb * KCAL_PER_LB) / span);
-  const ratePerWeek = Math.round((changeLb / span) * 7 * 100) / 100;
+  const tdee = Math.round(avgIntake - slopePerDay * KCAL_PER_LB);
+  const ratePerWeek = Math.round(slopePerDay * 7 * 100) / 100;
 
   const goal = settings.goalLb;
   const atGoal = goal !== null && latestTrend !== null && latestTrend <= goal;
